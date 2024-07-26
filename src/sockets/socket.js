@@ -302,7 +302,7 @@ module.exports = (io) => {
     socket.on("private message", async (data) => {
       console.log(data, "- data on server private m.");
       const { senderId, receiverId, message } = data;
-      let messages = [];
+      // let messages = [];
 
       const receiver = await UserModel.findById(receiverId);
 
