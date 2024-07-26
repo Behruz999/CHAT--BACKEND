@@ -9,22 +9,13 @@ const {
 const globalErrorHandler = require("./settings/errorHandle/errHandler");
 const allRoutes = require("./router");
 const server = require("http").createServer(app);
+app.use(cors());
 const io = require("socket.io")(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"],
   },
 });
 const sockets = require("./sockets/socket");
-
-const corsOptions = {
-  origin: "http://localhost:5173/",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"],
-  credentials: true,
-};
-
-app.use(cors(corsOptions));
 
 app.use(express.static("public"));
 
