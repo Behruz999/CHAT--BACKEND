@@ -15,7 +15,12 @@ const io = require("socket.io")(server, {
 });
 const sockets = require("./sockets/socket");
 
-app.use(cors());
+const corsOptions = {
+  origin: "http://localhost:5173",
+  methods: "GET,HEAD,OPTIONS,POST,PUT,PATCH,DELETE",
+};
+
+app.use(cors(corsOptions));
 
 app.use(express.static("public"));
 
