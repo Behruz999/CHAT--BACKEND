@@ -9,7 +9,10 @@ const {
 const globalErrorHandler = require("./settings/errorHandle/errHandler");
 const allRoutes = require("./router");
 const server = require("http").createServer(app);
-const io = require("socket.io")(server);
+const io = require("socket.io")(server, {
+  origin: process.env.CLIENT_URL,
+  methods: ["GET", "POST"],
+});
 const sockets = require("./sockets/socket");
 
 app.use(cors());
