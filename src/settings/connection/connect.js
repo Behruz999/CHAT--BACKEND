@@ -11,8 +11,8 @@ async function dbConnection(req, res, next) {
 }
 
 function portConnection(server) {
-  server.listen(process.env?.PORT, () => {
-    console.log(`${process.env?.PORT} port's running...`);
+  server.listen(PORT, () => {
+    console.log(`${PORT} port's running...`);
   });
 }
 
