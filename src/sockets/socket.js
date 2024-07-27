@@ -297,16 +297,14 @@ module.exports = (io) => {
         isCurrentUser: message.sender._id.toString() === senderId.toString(),
       }));
 
-      // io.to(socket.id).emit("private_message", annotatedMessages);
-      if (typeof callback === "function") {
-        callback(annotatedMessages);
-      }
+      // io.to(socket.id).emit("get_chat_messages", annotatedMessages);
+      callback(annotatedMessages)
     });
 
     socket.on("private_message", async (data) => {
       console.log(data, "- data on server private m.");
       const { senderId, receiverId, message } = data;
-      // let messages = [];
+      let messages = [];
 
       const receiver = await UserModel.findById(receiverId);
 
@@ -318,28 +316,45 @@ module.exports = (io) => {
         });
         await newMessage.save();
 
-        io.to(socket.id).emit("get_chat_messages", {
-          senderId,
-          receiverId: receiver._id,
-          // content: message,
-          // messages: annotatedMessages,
-          // date: newMessage.date.split(" ")[1],
-        });
+        if (senderId && receiverId) {
+          messages = await MessageModel.find({
+            $or: [
+              { sender: senderId, receiver: receiverId },
+              { sender: receiverId, receiver: senderId },
+            ],
+          })
+            .populate("sender", "username")
+            .populate("receiver", "username")
+            .sort({ createdAt: 1 });
+        }
+        // console.log(senderId, '- senderid on get_chat_messages');
+        const annotatedMessages = messages.map((message) => ({
+          ...message.toObject(),
+          isCurrentUser: message.sender._id.toString() === senderId.toString(),
+        }));
 
-        // io.to(socket.id).emit("private_message", {
+        // io.to(socket.id).emit("get_chat_messages", {
         //   senderId,
         //   receiverId: receiver._id,
-        //   content: message,
+        //   // content: message,
         //   // messages: annotatedMessages,
-        //   date: newMessage.date.split(" ")[1],
+        //   // date: newMessage.date.split(" ")[1],
         // });
+        
+        io.to(socket.id).emit("private_message", {
+          senderId,
+          receiverId: receiver._id,
+          content: message,
+          messages: annotatedMessages,
+          date: newMessage.date.split(" ")[1],
+        });
 
         if (receiver.socketId) {
           io.to(receiver.socketId).emit("private_message", {
             senderId,
             receiverId: receiver._id,
             content: message,
-            // messages: annotatedMessages,
+            messages: annotatedMessages,
             date: newMessage.date.split(" ")[1],
           });
           newMessage.delivered = true;
