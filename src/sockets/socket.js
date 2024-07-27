@@ -263,7 +263,7 @@ module.exports = (io) => {
       });
 
       for (const message of undeliveredMessages) {
-        io.to(socket.id).emit("private message", {
+        io.to(socket.id).emit("private_message", {
           senderId: message.sender,
           receiverId: message.receiver,
           content: message.content,
@@ -275,7 +275,8 @@ module.exports = (io) => {
       }
     });
 
-    socket.on("get_chat_messages", async (data) => {
+    socket.on("get_chat_messages", async (data, callback) => {
+      console.log(data, "- data on server: get_chat_messages");
       const { senderId, receiverId } = data;
       let messages = [];
 
@@ -296,10 +297,13 @@ module.exports = (io) => {
         isCurrentUser: message.sender._id.toString() === senderId.toString(),
       }));
 
-      io.to(socket.id).emit("private message", { messages: annotatedMessages });
+      // io.to(socket.id).emit("private_message", annotatedMessages);
+      if (typeof callback === "function") {
+        callback(annotatedMessages);
+      }
     });
 
-    socket.on("private message", async (data) => {
+    socket.on("private_message", async (data) => {
       console.log(data, "- data on server private m.");
       const { senderId, receiverId, message } = data;
       // let messages = [];
@@ -314,33 +318,24 @@ module.exports = (io) => {
         });
         await newMessage.save();
 
-        // if (senderId && receiverId) {
-        //   messages = await MessageModel.find({
-        //     $or: [
-        //       { sender: senderId, receiver: receiverId },
-        //       { sender: receiverId, receiver: senderId },
-        //     ],
-        //   })
-        //     .populate("sender", "username")
-        //     .populate("receiver", "username")
-        //     .sort({ createdAt: 1 });
-        // }
-
-        // const annotatedMessages = messages.map((message) => ({
-        //   ...message.toObject(),
-        //   isCurrentUser: message.sender._id.toString() === senderId.toString(),
-        // }));
-
-        io.to(socket.id).emit("private message", {
+        io.to(socket.id).emit("get_chat_messages", {
           senderId,
           receiverId: receiver._id,
-          content: message,
+          // content: message,
           // messages: annotatedMessages,
-          date: newMessage.date.split(" ")[1],
+          // date: newMessage.date.split(" ")[1],
         });
 
+        // io.to(socket.id).emit("private_message", {
+        //   senderId,
+        //   receiverId: receiver._id,
+        //   content: message,
+        //   // messages: annotatedMessages,
+        //   date: newMessage.date.split(" ")[1],
+        // });
+
         if (receiver.socketId) {
-          io.to(receiver.socketId).emit("private message", {
+          io.to(receiver.socketId).emit("private_message", {
             senderId,
             receiverId: receiver._id,
             content: message,
