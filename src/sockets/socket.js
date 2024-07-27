@@ -92,6 +92,7 @@
 
 const UserModel = require("../models/user");
 const MessageModel = require("../models/message");
+const moment = require("moment");
 
 module.exports = (io) => {
   // io.on("connection", (socket) => {
@@ -294,11 +295,13 @@ module.exports = (io) => {
       // console.log(senderId, '- senderid on get_chat_messages');
       const annotatedMessages = messages.map((message) => ({
         ...message.toObject(),
+        date: message.date.split(" ")[1],
         isCurrentUser: message.sender._id.toString() === senderId.toString(),
       }));
+      console.log(messages);
 
       // io.to(socket.id).emit("get_chat_messages", annotatedMessages);
-      callback(annotatedMessages)
+      callback(annotatedMessages);
     });
 
     socket.on("private_message", async (data) => {
@@ -313,9 +316,10 @@ module.exports = (io) => {
           sender: senderId,
           receiver: receiver._id,
           content: message,
+          date: moment().format("YYYY-MM-DD HH:mm"),
         });
         await newMessage.save();
-
+        console.log(newMessage.date, "- date", newMessage.date.split(" ")[1]);
         if (senderId && receiverId) {
           messages = await MessageModel.find({
             $or: [
@@ -340,7 +344,7 @@ module.exports = (io) => {
         //   // messages: annotatedMessages,
         //   // date: newMessage.date.split(" ")[1],
         // });
-        
+
         io.to(socket.id).emit("private_message", {
           senderId,
           receiverId: receiver._id,

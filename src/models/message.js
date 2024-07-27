@@ -32,7 +32,7 @@ const messageSchema = new Schema(
     },
     date: {
       type: String,
-      default: moment().format("YYYY-mm-DD HH:mm"),
+      required: true,
     },
   },
   { timestamps: true, versionKey: false }
