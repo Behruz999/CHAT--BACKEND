@@ -58,7 +58,13 @@ async function login(req, res, next) {
 
 async function getAll(req, res, next) {
   try {
-    const allUsers = await UserModel.find();
+    let allUsers = [];
+
+    if (req.query.userId) {
+      allUsers = await UserModel.find({ _id: { $ne: req.query.userId } });
+    } else {
+      allUsers = await UserModel.find();
+    }
 
     return res.status(200).json(allUsers);
   } catch (err) {
