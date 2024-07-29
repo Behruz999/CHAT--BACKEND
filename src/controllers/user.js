@@ -57,11 +57,16 @@ async function login(req, res, next) {
 // }
 
 async function getAll(req, res, next) {
+  const { userId, searchTerm } = req.query;
   try {
     let allUsers = [];
 
-    if (req.query.userId) {
-      allUsers = await UserModel.find({ _id: { $ne: req.query.userId } });
+    if (searchTerm) {
+      allUsers = await UserModel.find({
+        username: new RegExp(searchTerm, "i"),
+      });
+    } else if (userId) {
+      allUsers = await UserModel.find({ _id: { $ne: userId } });
     } else {
       allUsers = await UserModel.find();
     }
