@@ -122,6 +122,7 @@ async function getChatMessages(req, res, next) {
 
     const annotatedMessages = messages.map((message) => ({
       ...message.toObject(),
+      date: message.date.split(" ")[1],
       isCurrentUser: message.sender._id.toString() === currentUserId.toString(),
     }));
 
