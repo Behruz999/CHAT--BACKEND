@@ -15,7 +15,7 @@ async function getAll(req, res, next) {
     const allRooms = await RoomModel.find();
 
     const populatedRooms = await RoomModel.populate(allRooms, [
-      { path: "members", select: "firstname" },
+      { path: "members", select: "firstname username" },
       { path: "messages", select: "content" },
     ]);
 
@@ -27,14 +27,14 @@ async function getAll(req, res, next) {
 
 async function getOne(req, res, next) {
   try {
-    const specifiedRoom = await RoomModel.findById(req.params);
+    const specifiedRoom = await RoomModel.findById(req.params.id);
 
     if (!specifiedRoom) {
       return res.status(400).json({ msg: `Room not found !` });
     }
 
     const populatedRoom = await RoomModel.populate(specifiedRoom, [
-      { path: "members", select: "firstname" },
+      { path: "members", select: "firstname username" },
       { path: "messages", select: "content" },
     ]);
 
@@ -47,7 +47,7 @@ async function getOne(req, res, next) {
 async function editOne(req, res, next) {
   try {
     const modifiedRoom = await RoomModel.findByIdAndUpdate(
-      req.params,
+      req.params.id,
       req.body,
       { new: true }
     );
@@ -57,7 +57,7 @@ async function editOne(req, res, next) {
     }
 
     const populatedRoom = await SellerModel.populate(modifiedRoom, [
-      { path: "members", select: "firstname" },
+      { path: "members", select: "firstname username" },
       { path: "messages", select: "content" },
     ]);
 
@@ -69,7 +69,7 @@ async function editOne(req, res, next) {
 
 async function deleteOne(req, res, next) {
   try {
-    const deletedRoom = await RoomModel.findByIdAndDelete(req.params);
+    const deletedRoom = await RoomModel.findByIdAndDelete(req.params.id);
 
     if (!deletedRoom) {
       return res.status(400).json({ msg: `Room not found !` });
@@ -83,8 +83,8 @@ async function deleteOne(req, res, next) {
 
 async function getRoomMembers(req, res, next) {
   try {
-    const specifiedRoom = await RoomModel.findById(req.params).populate(
-      "members"
+    const specifiedRoom = await RoomModel.findById(req.params.id).populate(
+      "members", 'firstname username'
     );
 
     if (!specifiedRoom) {

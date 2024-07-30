@@ -7,7 +7,13 @@ const paramsSchema = Joi.object({
 const bodySchema = Joi.object({
   name: Joi.string().trim(true).required(),
   desc: Joi.string().trim(true),
-  password: Joi.string().trim(true),
+  password: Joi.string()
+    .trim(true)
+    .when("isPublic", {
+      is: Joi.equal(false),
+      then: Joi.required(),
+      otherwise: Joi.forbidden(),
+    }),
   creator: Joi.string().hex().length(24).trim(true).required(),
   members: Joi.array().items(
     Joi.string().hex().length(24).trim(true).required()
