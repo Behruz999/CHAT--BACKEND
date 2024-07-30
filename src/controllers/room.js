@@ -46,18 +46,39 @@ async function getOne(req, res, next) {
 
 async function editOne(req, res, next) {
   try {
-    const modifiedRoom = await RoomModel.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
+    const existRoom = await RoomModel.findById(req.params.id);
 
-    if (!modifiedRoom) {
+    if (!existRoom) {
       return res.status(400).json({ msg: `Room not found !` });
     }
 
-    const populatedRoom = await SellerModel.populate(modifiedRoom, [
+    for (const key of Object.keys(req.body)) {
+      if (key == "members") {
+        for (const { status, content } of req.body.members) {
+          if (status == 1) {
+            const foundRoomIndex = existRoom.members.indexOf(content);
+
+            if (foundRoomIndex === -1) {
+              existRoom.members.push(content);
+            }
+          } else if (status == 0) {
+            const foundRoomIndex = existRoom.members.indexOf(content);
+
+            if (foundRoomIndex !== -1) {
+              existRoom.members.splice(content, 1);
+            }
+          }
+        }
+      } else {
+        existRoom[key] = req.body[key];
+      }
+    }
+
+    await existRoom.save();
+
+    const populatedRoom = await RoomModel.populate(existRoom, [
       { path: "members", select: "firstname username" },
+      { path: "creator", select: "firstname username" },
       { path: "messages", select: "content" },
     ]);
 
@@ -84,7 +105,8 @@ async function deleteOne(req, res, next) {
 async function getRoomMembers(req, res, next) {
   try {
     const specifiedRoom = await RoomModel.findById(req.params.id).populate(
-      "members", 'firstname username'
+      "members",
+      "firstname username"
     );
 
     if (!specifiedRoom) {

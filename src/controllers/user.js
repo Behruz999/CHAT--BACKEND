@@ -61,9 +61,12 @@ async function getAll(req, res, next) {
   try {
     let allUsers = [];
 
-    if (searchTerm) {
+    if (searchTerm && userId) {
       allUsers = await UserModel.find({
-        username: new RegExp(searchTerm, "i"),
+        $and: [
+          { username: new RegExp(searchTerm, "i") },
+          { _id: { $ne: userId } },
+        ],
       });
     } else if (userId) {
       allUsers = await UserModel.find({ _id: { $ne: userId } });
