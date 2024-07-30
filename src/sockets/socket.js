@@ -536,6 +536,10 @@ module.exports = (io) => {
       }
     });
 
+    socket.on('room_chat_messages', (data) => {
+      const { senderId, receiverId, roomId } = data
+    })
+
     socket.on("disconnect", async () => {
       console.log("user disconnected:", socket.id);
       await UserModel.updateOne({ socketId: socket.id }, { socketId: null });
