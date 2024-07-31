@@ -590,66 +590,106 @@ module.exports = (io) => {
       }
     });
 
-    socket.on("join_room", async (data, cb) => {
-      const { senderId, roomId, roomPassword } = data;
+    socket.on("room_details", async (data, cb) => {
+      const { senderId, roomId, roomPassword, isJoin } = data;
       try {
         const room = await RoomModel.findById(roomId);
         const user = await UserModel.findById(senderId);
 
         if (room) {
-          if (!room.isPublic) {
-            if (!roomPassword || roomPassword != room.password) {
-              cb && cb({ error: `Matching password required !` });
+          if (!isJoin) {
+            io.to(roomId).emit("room_details", {
+              roomDetails: {
+                ...room,
+                isMember: room.members.includes(senderId),
+              },
+            });
+          } else if (isJoin == true) {
+            if (!room.isPublic) {
+              if (!roomPassword || roomPassword != room.password) {
+                cb && cb({ error: `Matching password required !` });
+              } else {
+                room.members.push(senderId);
+                await room.save();
+                socket.join(roomId);
+                io.to(roomId).emit("room_details", {
+                  info: `${
+                    user.firstname ? user.firstname : user.username
+                  } joined`,
+                  roomDetails: {
+                    ...room,
+                    isMember: room.members.includes(senderId),
+                  },
+                });
+              }
             } else {
               room.members.push(senderId);
               await room.save();
               socket.join(roomId);
-              io.to(roomId).emit("room_chat_messages", {
+              io.to(roomId).emit("room_details", {
                 info: `${
                   user.firstname ? user.firstname : user.username
                 } joined`,
+                roomDetails: {
+                  ...room,
+                  isMember: room.members.includes(senderId),
+                },
               });
             }
-          } else {
-            room.members.push(senderId);
-            await room.save();
-            socket.join(roomId);
-            io.to(roomId).emit("room_chat_messages", {
-              info: `${user.firstname ? user.firstname : user.username} joined`,
-            });
+          } else if (isJoin == false) {
+            if (room && user) {
+              room.members = room.members.filter((m) => {
+                return m != senderId;
+              });
+              await room.save();
+              socket.leave(roomId);
+              io.to(roomId).emit("room_details", {
+                info: `${user.firstname ? user.firstname : user.username} left`,
+                roomDetails: {
+                  ...room,
+                  isMember: room.members.includes(senderId),
+                },
+              });
+            } else {
+              cb && cb({ error: "Whether room or user not found !" });
+            }
           }
         } else {
           cb && cb({ error: "Room not found !" });
         }
       } catch (err) {
-        console.error(`Error handling join_room:`, err);
-        cb && cb({ error: "Failed to handle join_room" });
+        console.error(`Error handling room_details:`, err);
+        cb && cb({ error: "Failed to handle room_details" });
       }
     });
 
-    socket.on("leave_room", async (data, cb) => {
-      const { senderId, roomId } = data;
-      try {
-        const room = await RoomModel.findById(roomId);
-        const user = await UserModel.findById(senderId);
+    // socket.on("leave_room", async (data, cb) => {
+    //   const { senderId, roomId } = data;
+    //   try {
+    //     const room = await RoomModel.findById(roomId);
+    //     const user = await UserModel.findById(senderId);
 
-        if (room && user) {
-          room.members = room.members.filter((m) => {
-            return m != senderId;
-          });
-          await room.save();
-          socket.leave(roomId);
-          io.to(roomId).emit("room_chat_messages", {
-            info: `${user.firstname ? user.firstname : user.username} left`,
-          });
-        } else {
-          cb && cb({ error: "Whether room or user not found !" });
-        }
-      } catch (err) {
-        console.error(`Error handling join_room:`, err);
-        cb && cb({ error: "Failed to handle join_room" });
-      }
-    });
+    //     if (room && user) {
+    //       room.members = room.members.filter((m) => {
+    //         return m != senderId;
+    //       });
+    //       await room.save();
+    //       socket.leave(roomId);
+    //       io.to(roomId).emit("room_chat_messages", {
+    //         info: `${user.firstname ? user.firstname : user.username} left`,
+    //         roomDetails: {
+    //           ...room,
+    //           isMember: room.members.includes(senderId),
+    //         },
+    //       });
+    //     } else {
+    //       cb && cb({ error: "Whether room or user not found !" });
+    //     }
+    //   } catch (err) {
+    //     console.error(`Error handling join_room:`, err);
+    //     cb && cb({ error: "Failed to handle join_room" });
+    //   }
+    // });
 
     socket.on("disconnect", async () => {
       console.log("user disconnected:", socket.id);

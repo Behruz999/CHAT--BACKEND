@@ -1,4 +1,5 @@
 const UserModel = require("../models/user");
+const { saveFile, unlinkImageToUpdate } = require('../utils/upload')
 
 async function login(req, res, next) {
   try {
@@ -80,6 +81,11 @@ async function editOne(req, res, next) {
 
     if (!existUser) {
       return res.status(400).json({ msg: `User not found !` });
+    }
+
+    if (req.file) {
+      await saveFile(req, res, next)
+      await unlinkImageToUpdate(req, existUser, next)
     }
 
     for (const key of Object.keys(req.body)) {

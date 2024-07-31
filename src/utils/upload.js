@@ -19,7 +19,7 @@ function fileFilter(req, file, cb) {
   cb(null, true);
 }
 
-async function saveFile(req, res) {
+async function saveFile(req, res, next) {
   try {
     await fs.mkdir(uploadPath, { recursive: true });
 
@@ -33,13 +33,41 @@ async function saveFile(req, res) {
       req.body.img = url;
     }
   } catch (err) {
-    res.status(500).json({
-      msg: `Internal server error: ${err?.message ? err.message : err}`,
-    });
+    next(err);
   }
 }
 
+async function unlinkImageToUpdate(req, doc, next) {
+  try {
+    const newImageURL = req.body.img;
 
+    if (doc?.img) {
+      const existingImagePath = join(
+        uploadPath,
+        getImageFilenameFromUrl(doc.img)
+      );
+      try {
+        await fs.unlink(existingImagePath);
+      } catch (err) {
+        if (err.code !== "ENOENT") {
+          // Ignore if file doesn't exist
+          console.error("Error deleting existing image:", err);
+        }
+      }
+    }
+
+    doc.img = newImageURL;
+  } catch (err) {
+    next(err);
+  }
+}
+
+function getImageFilenameFromUrl(imgUrl) {
+  // [ 'http:', '', 'localhost:5000', '1722419572164.jpg' ] - urlParts
+  // 1722419572164.jpg - urlParts[urlParts.length - 1]
+  const urlParts = imgUrl.split("/");
+  return urlParts[urlParts.length - 1];
+}
 
 const uploadOne = multer({
   storage,
@@ -49,4 +77,5 @@ const uploadOne = multer({
 module.exports = {
   uploadOne,
   saveFile,
+  unlinkImageToUpdate,
 };

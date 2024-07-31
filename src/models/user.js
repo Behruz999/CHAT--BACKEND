@@ -11,6 +11,10 @@ const userSchema = new Schema(
       unique: true,
       required: true,
     },
+    img: {
+      type: String,
+      default: null,
+    },
     bio: {
       type: String,
       default: null,

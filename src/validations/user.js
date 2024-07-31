@@ -12,6 +12,7 @@ const loginSchema = Joi.object({
 const editSchema = Joi.object({
   firstname: Joi.string().trim(true),
   username: Joi.string().trim(true),
+  img: Joi.string().trim(true),
   bio: Joi.string().trim(true),
   password: Joi.string().trim(true),
   contacts: Joi.array().items({
