@@ -1,8 +1,16 @@
 const RoomModel = require("../models/room");
 
 async function add(req, res, next) {
+  const { name, desc, creator, members } = req.body;
   try {
-    const newRoom = await RoomModel.create(req.body);
+    const newRoom = new RoomModel({
+      name,
+      desc,
+      creator,
+      password: req.body?.password && req.body?.password,
+      members: [...members, creator],
+      isPublic: req.body?.isPublic && req.body?.isPublic,
+    });
 
     return res.status(201).json(newRoom);
   } catch (err) {

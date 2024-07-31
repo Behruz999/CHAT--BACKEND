@@ -39,6 +39,8 @@ async function saveFile(req, res) {
   }
 }
 
+
+
 const uploadOne = multer({
   storage,
   fileFilter,
@@ -46,4 +48,5 @@ const uploadOne = multer({
 
 module.exports = {
   uploadOne,
+  saveFile,
 };
