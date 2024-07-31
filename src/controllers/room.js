@@ -26,11 +26,19 @@ async function getAll(req, res, next) {
 }
 
 async function getOne(req, res, next) {
+  const { userId } = req.query;
   try {
-    const specifiedRoom = await RoomModel.findById(req.params.id);
+    let specifiedRoom = await RoomModel.findById(req.params.id);
 
     if (!specifiedRoom) {
       return res.status(400).json({ msg: `Room not found !` });
+    }
+
+    if (userId) {
+      specifiedRoom = {
+        ...specifiedRoom._doc,
+        isMember: specifiedRoom.members.includes(userId),
+      };
     }
 
     const populatedRoom = await RoomModel.populate(specifiedRoom, [

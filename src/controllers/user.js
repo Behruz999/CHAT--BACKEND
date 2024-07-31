@@ -1,60 +1,40 @@
 const UserModel = require("../models/user");
 
-async function register(req, res, next) {
-  try {
-    const existUser = await UserModel.findOne({
-      username: req.body?.username,
-    }).select("-updatedAt -createdAt");
-
-    if (existUser) {
-      return res.status(400).json({ msg: `Try another username !` });
-    }
-
-    const newUser = await UserModel.create(req.body);
-
-    return res
-      .status(201)
-      .json({ msg: `Welcome to ChatSphere system !`, doc: newUser });
-  } catch (err) {
-    next(err);
-  }
-}
-
 async function login(req, res, next) {
   try {
-    const existUser = await UserModel.findOne({
-      username: req.body?.username,
+    let user = await UserModel.findOne({
+      username: req.body.username,
     }).select("-updatedAt -createdAt");
 
-    if (!existUser) {
-      return res
-        .status(400)
-        .json({ msg: `System unable to find your credentials !` });
+    if (!user) {
+      user = new UserModel({
+        username: req.body.username,
+      });
+      await user.save();
     }
 
-    return res
-      .status(200)
-      .json({ msg: `Successfully accessed ChatSphere !`, doc: existUser });
+    let response = {
+      msg: `Successfully accessed ChatSphere !`,
+      doc: user,
+      status: 0,
+    };
+
+    if (user.password) {
+      if (!req.body.password) {
+        response.status = 1;
+        delete response.doc;
+        delete response.msg;
+        return res.status(400).json(response);
+      } else if (req.body.password != user.password) {
+        return res.status(400).json({ msg: `Matching password required !` });
+      }
+    }
+
+    return res.status(200).json(response);
   } catch (err) {
     next(err);
   }
 }
-
-// async function accessViaPassword(req, res, next) {
-//   try {
-//     const existUser = await UserModel.findOne({ username: req.body?.username });
-
-//     if (!existUser) {
-//       return res.status(400).json({ msg: `System unable to find your credentials !` });
-//     }
-
-//     return res
-//       .status(201)
-//       .json({ msg: `Successfully accessed ChatSphere !`, doc: existUser });
-//   } catch (err) {
-//     next(err);
-//   }
-// }
 
 async function getAll(req, res, next) {
   const { userId, searchTerm } = req.query;
@@ -155,7 +135,6 @@ async function deleteOne(req, res, next) {
 }
 
 module.exports = {
-  register,
   login,
   getAll,
   getOne,

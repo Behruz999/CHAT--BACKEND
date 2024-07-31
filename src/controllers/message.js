@@ -31,7 +31,7 @@ async function getAll(req, res, next) {
 
 async function getOne(req, res, next) {
   try {
-    const specifiedMessage = await MessageModel.findById(req.params);
+    const specifiedMessage = await MessageModel.findById(req.params.id);
 
     if (!specifiedMessage) {
       return res.status(400).json({ msg: `Message not found !` });
@@ -53,7 +53,7 @@ async function getOne(req, res, next) {
 async function editOne(req, res, next) {
   try {
     const modifiedMessage = await MessageModel.findByIdAndUpdate(
-      req.params,
+      req.params.id,
       req.body,
       { new: true }
     );
@@ -62,7 +62,7 @@ async function editOne(req, res, next) {
       return res.status(400).json({ msg: `Message not found !` });
     }
 
-    const populatedMessage = await SellerModel.populate(modifiedMessage, [
+    const populatedMessage = await MessageModel.populate(modifiedMessage, [
       { path: "sender", select: "firstname username" },
       { path: "receiver", select: "firstname username" },
       { path: "room", select: "name" },
@@ -77,7 +77,7 @@ async function editOne(req, res, next) {
 
 async function deleteOne(req, res, next) {
   try {
-    const deletedMessage = await MessageModel.findByIdAndDelete(req.params);
+    const deletedMessage = await MessageModel.findByIdAndDelete(req.params.id);
 
     if (!deletedMessage) {
       return res.status(400).json({ msg: `Message not found !` });

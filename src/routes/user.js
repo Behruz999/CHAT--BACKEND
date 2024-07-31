@@ -1,6 +1,5 @@
 const router = require("express").Router();
 const {
-  register,
   login,
   getAll,
   getOne,
@@ -10,12 +9,9 @@ const {
 
 const {
   validateParams,
-  validateRegister,
   validateLogin,
   validateEdit,
 } = require("../validations/user");
-
-router.route("/register").post(validateRegister, register);
 
 router.route("/login").post(validateLogin, login);
 
