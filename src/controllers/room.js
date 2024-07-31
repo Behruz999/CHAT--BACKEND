@@ -21,8 +21,17 @@ async function add(req, res, next) {
 }
 
 async function getAll(req, res, next) {
+  const { searchTerm } = req.query;
   try {
-    const allRooms = await RoomModel.find();
+    let allRooms = [];
+
+    if (searchTerm) {
+      allRooms = await RoomModel.find({
+        name: new RegExp(searchTerm, "i"),
+      });
+    } else {
+      allRooms = await RoomModel.find();
+    }
 
     const populatedRooms = await RoomModel.populate(allRooms, [
       { path: "members", select: "firstname username" },

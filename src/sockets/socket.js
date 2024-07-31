@@ -408,35 +408,66 @@ module.exports = (io) => {
       await UserModel.updateOne({ _id: userIdentifier }, { socketId });
     });
 
-    socket.on("login", async (username, callback) => {
-      console.log("login event received for user:", username);
-      let user = await UserModel.findOne({ username });
-      if (!user) {
-        user = new UserModel({ username });
-        await user.save();
+    // socket.on("login", async (username, callback) => {
+    //   console.log("login event received for user:", username);
+    //   let user = await UserModel.findOne({ username });
+    //   if (!user) {
+    //     user = new UserModel({ username });
+    //     await user.save();
+    //   }
+    //   user.socketId = socket.id;
+    //   await user.save();
+
+    //   socket.userId = user._id;
+    //   callback(user._id);
+
+    //   // const undeliveredMessages = await MessageModel.find({
+    //   //   receiver: user._id,
+    //   //   delivered: false,
+    //   // });
+
+    //   // for (const message of undeliveredMessages) {
+    //   //   io.to(socket.id).emit("private_message", {
+    //   //     senderId: message.sender,
+    //   //     receiverId: message.receiver,
+    //   //     content: message.content,
+    //   //     date: message.date.split(" ")[1],
+    //   //   });
+
+    //   //   message.delivered = true;
+    //   //   await message.save();
+    //   // }
+    // });
+
+    socket.on("all_rooms", async (data) => {
+      const { senderId } = data;
+      const allRooms = await RoomModel.find({
+        members: { $in: [senderId] },
+      }).select("-desc -password -creator -createdAt -updatedAt");
+
+      for (const room of allRooms) {
+        if (Array.isArray(room.messages) && room.messages.length !== 0) {
+          const lastMessage = await MessageModel.findById(
+            room.messages.length - 1
+          ).select("sender content delivered date");
+
+          allRooms[room]["messages"] = [
+            {
+              ...lastMessage,
+              isMe: lastMessage?.sender == senderId,
+            },
+          ];
+        }
       }
-      user.socketId = socket.id;
-      await user.save();
 
-      socket.userId = user._id;
-      callback(user._id);
+      const populatedRooms = await RoomModel.populate(allRooms, [
+        { path: "members", select: "firstname username" },
+        { path: "messages", select: "content" },
+      ]);
 
-      // const undeliveredMessages = await MessageModel.find({
-      //   receiver: user._id,
-      //   delivered: false,
-      // });
-
-      // for (const message of undeliveredMessages) {
-      //   io.to(socket.id).emit("private_message", {
-      //     senderId: message.sender,
-      //     receiverId: message.receiver,
-      //     content: message.content,
-      //     date: message.date.split(" ")[1],
-      //   });
-
-      //   message.delivered = true;
-      //   await message.save();
-      // }
+      io.to(socket.id).emit("all_rooms", {
+        rooms: populatedRooms,
+      });
     });
 
     // socket.on("get_chat_messages", async (data, callback) => {
