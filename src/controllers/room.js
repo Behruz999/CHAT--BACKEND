@@ -12,6 +12,8 @@ async function add(req, res, next) {
       isPublic: req.body?.isPublic && req.body?.isPublic,
     });
 
+    await newRoom.save();
+
     return res.status(201).json(newRoom);
   } catch (err) {
     next(err);
