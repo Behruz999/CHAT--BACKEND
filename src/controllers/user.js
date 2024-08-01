@@ -16,7 +16,7 @@ async function login(req, res, next) {
 
     let response = {
       msg: `Successfully accessed ChatSphere !`,
-      doc: user,
+      doc: user.id,
       status: 0,
     };
 

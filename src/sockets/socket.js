@@ -449,7 +449,7 @@ module.exports = (io) => {
         if (Array.isArray(room.messages) && room.messages.length !== 0) {
           const lastMessage = await MessageModel.findById(
             room.messages.length - 1
-          ).select("sender content delivered date");
+          ).select("sender content delivered date updatedAt");
 
           allRooms[room]["messages"] = [
             {
@@ -628,13 +628,17 @@ module.exports = (io) => {
         const user = await UserModel.findById(senderId);
 
         if (room) {
-          if (!isJoin) {
-            io.to(roomId).emit("room_details", {
+          if (!("isJoin" in data)) {
+            let payload = {
               roomDetails: {
-                ...room,
+                ...room.toObject(),
                 isMember: room.members.includes(senderId),
               },
-            });
+            };
+            if (!room.isPublic && !payload.roomDetails.isMember) {
+              payload.roomDetails.messages = [];
+            }
+            io.to(roomId).emit("room_details", payload);
           } else if (isJoin == true) {
             if (!room.isPublic) {
               if (!roomPassword || roomPassword != room.password) {
@@ -648,7 +652,7 @@ module.exports = (io) => {
                     user.firstname ? user.firstname : user.username
                   } joined`,
                   roomDetails: {
-                    ...room,
+                    ...room.toObject(),
                     isMember: room.members.includes(senderId),
                   },
                 });
@@ -662,7 +666,7 @@ module.exports = (io) => {
                   user.firstname ? user.firstname : user.username
                 } joined`,
                 roomDetails: {
-                  ...room,
+                  ...room.toObject(),
                   isMember: room.members.includes(senderId),
                 },
               });
@@ -677,7 +681,7 @@ module.exports = (io) => {
               io.to(roomId).emit("room_details", {
                 info: `${user.firstname ? user.firstname : user.username} left`,
                 roomDetails: {
-                  ...room,
+                  ...room.toObject(),
                   isMember: room.members.includes(senderId),
                 },
               });

@@ -10,9 +10,9 @@ const bodySchema = Joi.object({
   password: Joi.string()
     .trim(true)
     .when("isPublic", {
-      is: Joi.equal(false),
+      is: false,
       then: Joi.required(),
-      otherwise: Joi.forbidden(),
+      otherwise: Joi.optional()
     }),
   creator: Joi.string().hex().length(24).trim(true).required(),
   members: Joi.array().items(

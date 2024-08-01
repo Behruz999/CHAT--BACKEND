@@ -8,7 +8,7 @@ async function add(req, res, next) {
       desc,
       creator,
       password: req.body?.password && req.body?.password,
-      members: [...members, creator],
+      members: members ? [...members, creator] : [creator],
       isPublic: req.body?.isPublic && req.body?.isPublic,
     });
 
