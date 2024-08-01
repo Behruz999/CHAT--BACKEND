@@ -239,20 +239,34 @@ module.exports = (io) => {
     });
 
     socket.on("room_details", async (data, cb) => {
-      console.log(data);
+      console.log(data, "- data room_details");
       const { senderId, roomId, roomPassword, isJoin } = data;
       try {
-        const room = await RoomModel.findById(roomId)
+        const user = await UserModel.findById(senderId);
+        let room = await RoomModel.findById(roomId)
           .populate("messages")
           .populate("members");
-        const user = await UserModel.findById(senderId);
 
         if (room) {
+          let messagesCopy = [];
+          if (room.messages.length !== 0) {
+            for (const message of room.messages) {
+              let messageObj = message.toObject ? message.toObject() : message;
+
+              messageObj.date = messageObj.date.split(" ")[1];
+              messageObj.isCurrentUser =
+              messageObj.sender.toString() === senderId.toString();
+
+              messagesCopy.push(messageObj);
+            }
+          }
+          // room.messages = messagesCopy;
           if (!("isJoin" in data)) {
             let payload = {
               roomDetails: {
                 ...room.toObject(),
                 // isMember: room.members.includes(senderId),
+                messages: messagesCopy,
                 isMember: room.members.some((m) => m.id == senderId),
               },
             };
@@ -279,6 +293,7 @@ module.exports = (io) => {
                   roomDetails: {
                     ...room.toObject(),
                     // isMember: room.members.includes(senderId),
+                    messages: messagesCopy,
                     isMember: room.members.some((m) => m.id == senderId),
                   },
                 };
@@ -295,6 +310,7 @@ module.exports = (io) => {
                   roomDetails: {
                     ...room.toObject(),
                     // isMember: room.members.includes(senderId),
+                    messages: messagesCopy,
                     isMember: room.members.some((m) => m.id == senderId),
                   },
                 };
@@ -312,6 +328,7 @@ module.exports = (io) => {
                 roomDetails: {
                   ...room.toObject(),
                   // isMember: room.members.includes(senderId),
+                  messages: messagesCopy,
                   isMember: room.members.some((m) => m.id == senderId),
                 },
               };
