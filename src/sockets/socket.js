@@ -207,6 +207,7 @@ module.exports = (io) => {
 
           room.messages.push(newMessage._id);
           await room.save();
+          await newMessage.save();
 
           // io.emit("room_chat_messages", {
           //   ...newMessage,
@@ -241,7 +242,9 @@ module.exports = (io) => {
       console.log(data);
       const { senderId, roomId, roomPassword, isJoin } = data;
       try {
-        const room = await RoomModel.findById(roomId).populate("messages").populate('members');
+        const room = await RoomModel.findById(roomId)
+          .populate("messages")
+          .populate("members");
         const user = await UserModel.findById(senderId);
 
         if (room) {
