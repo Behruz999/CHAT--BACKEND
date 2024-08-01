@@ -50,14 +50,16 @@ module.exports = (io) => {
 
       for (const room of allRooms) {
         if (Array.isArray(room.messages) && room.messages.length !== 0) {
-          const lastMessage = await MessageModel.findById(
-            room.messages.length - 1
-          ).select("sender content delivered date updatedAt");
+          const lastMessageId = room.messages[room.messages.length - 1];
+          const lastMessage = await MessageModel.findById(lastMessageId).select(
+            "sender content delivered date updatedAt"
+          );
 
-          allRooms[room]["messages"] = [
+          // Here we assume allRooms is an array, if it's an object, the indexing needs to be corrected.
+          allRooms[allRooms.indexOf(room)].messages = [
             {
-              ...lastMessage,
-              isMe: lastMessage?.sender == senderId,
+              ...lastMessage.toObject(),
+              isMe: lastMessage?.sender.toString() === senderId,
             },
           ];
         }
