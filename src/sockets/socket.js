@@ -42,37 +42,72 @@ module.exports = (io) => {
     //   // }
     // });
 
+    // socket.on("all_rooms", async (data) => {
+    //   const { senderId } = data;
+    //   const allRooms = await RoomModel.find({
+    //     members: { $in: [senderId] },
+    //   }).select("-desc -password -creator -createdAt -updatedAt");
+
+    //   for (const room of allRooms) {
+    //     if (Array.isArray(room.messages) && room.messages.length !== 0) {
+    //       const lastMessageId = room.messages[room.messages.length - 1];
+    //       const lastMessage = await MessageModel.findById(lastMessageId).select(
+    //         "sender content delivered date updatedAt"
+    //       );
+
+    //       allRooms[room]["messages"] = [
+    //         {
+    //           ...lastMessage,
+    //           isMe: lastMessage?.sender == senderId,
+    //         },
+    //       ];
+    //     }
+    //   }
+
+    //   const populatedRooms = await RoomModel.populate(allRooms, [
+    //     { path: "members", select: "firstname username" },
+    //     { path: "messages", select: "content" },
+    //   ]);
+
+    //   io.to(socket.id).emit("all_rooms", {
+    //     rooms: populatedRooms,
+    //   });
+    // });
+
     socket.on("all_rooms", async (data) => {
-      const { senderId } = data;
-      const allRooms = await RoomModel.find({
-        members: { $in: [senderId] },
-      }).select("-desc -password -creator -createdAt -updatedAt");
+      try {
+        const { senderId } = data;
+        const allRooms = await RoomModel.find({
+          members: { $in: [senderId] },
+        }).select("-desc -password -creator -createdAt");
 
-      for (const room of allRooms) {
-        if (Array.isArray(room.messages) && room.messages.length !== 0) {
-          const lastMessageId = room.messages[room.messages.length - 1];
-          const lastMessage = await MessageModel.findById(lastMessageId).select(
-            "sender content delivered date updatedAt"
-          );
+        for (const room of allRooms) {
+          if (Array.isArray(room.messages) && room.messages.length !== 0) {
+            // Directly get the last message document
+            const lastMessage = await MessageModel.findById(
+              room.messages[room.messages.length - 1]
+            ).select("sender content delivered date updatedAt");
 
-          // Here we assume allRooms is an array, if it's an object, the indexing needs to be corrected.
-          allRooms[allRooms.indexOf(room)].messages = [
-            {
-              ...lastMessage.toObject(),
-              isMe: lastMessage?.sender.toString() === senderId,
-            },
-          ];
+            if (lastMessage) {
+              room["lastMessage"] = {
+                ...lastMessage.toObject(),
+                isMe: lastMessage.sender == senderId,
+              };
+            }
+          }
         }
+
+        const populatedRooms = await RoomModel.populate(allRooms, [
+          { path: "members", select: "firstname username" },
+          { path: "messages", select: "content delivered date" },
+        ]);
+
+        io.to(socket.id).emit("all_rooms", {
+          rooms: populatedRooms,
+        });
+      } catch (error) {
+        console.error("Error processing all_rooms event:", error);
       }
-
-      const populatedRooms = await RoomModel.populate(allRooms, [
-        { path: "members", select: "firstname username" },
-        { path: "messages", select: "content" },
-      ]);
-
-      io.to(socket.id).emit("all_rooms", {
-        rooms: populatedRooms,
-      });
     });
 
     socket.on("private_message", async (data, cb) => {
@@ -206,7 +241,7 @@ module.exports = (io) => {
       console.log(data);
       const { senderId, roomId, roomPassword, isJoin } = data;
       try {
-        const room = await RoomModel.findById(roomId);
+        const room = await RoomModel.findById(roomId).populate("messages").populate('members');
         const user = await UserModel.findById(senderId);
 
         if (room) {
@@ -214,7 +249,8 @@ module.exports = (io) => {
             let payload = {
               roomDetails: {
                 ...room.toObject(),
-                isMember: room.members.includes(senderId),
+                // isMember: room.members.includes(senderId),
+                isMember: room.members.some((m) => m.id == senderId),
               },
             };
             if (!room.isPublic && !payload.roomDetails.isMember) {
@@ -239,7 +275,8 @@ module.exports = (io) => {
                   } joined`,
                   roomDetails: {
                     ...room.toObject(),
-                    isMember: room.members.includes(senderId),
+                    // isMember: room.members.includes(senderId),
+                    isMember: room.members.some((m) => m.id == senderId),
                   },
                 };
                 io.to(user.socketId).emit("room_details", joinMessage);
@@ -254,7 +291,8 @@ module.exports = (io) => {
                   } joined`,
                   roomDetails: {
                     ...room.toObject(),
-                    isMember: room.members.includes(senderId),
+                    // isMember: room.members.includes(senderId),
+                    isMember: room.members.some((m) => m.id == senderId),
                   },
                 };
                 io.to(user.socketId).emit("room_details", joinMessage);
@@ -270,7 +308,8 @@ module.exports = (io) => {
                 info: `${user.firstname ? user.firstname : user.username} left`,
                 roomDetails: {
                   ...room.toObject(),
-                  isMember: room.members.includes(senderId),
+                  // isMember: room.members.includes(senderId),
+                  isMember: room.members.some((m) => m.id == senderId),
                 },
               };
               io.to(user.socketId).emit("room_details", leaveMessage);
