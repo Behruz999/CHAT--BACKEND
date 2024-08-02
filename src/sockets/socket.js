@@ -217,10 +217,16 @@ module.exports = (io) => {
 
           // Notify all users in the room about the new message
 
-          io.to(roomId).emit("room_chat_messages", {
+          // io.to(roomId).emit("room_chat_messages", {
+          //   ...newMessage.toObject(),
+          //   date: newMessage.date.split(" ")[1],
+          //   // isCurrentUser: false,
+          // });
+
+          socket.to(roomId).emit("room_chat_messages", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
-            isCurrentUser: false,
+            sender: senderId,
           });
 
           // Notify the sender specifically with isCurrentUser set to true
@@ -248,6 +254,7 @@ module.exports = (io) => {
           .populate("members");
 
         if (room) {
+          socket.join(roomId);
           let messagesCopy = [];
           if (room.messages.length !== 0) {
             for (const message of room.messages) {
@@ -302,7 +309,7 @@ module.exports = (io) => {
               } else if (room.isPublic) {
                 room.members.push(senderId);
                 await room.save();
-                socket.join(roomId);
+                // socket.join(roomId);
                 const joinMessage = {
                   info: `${
                     user.firstname ? user.firstname : user.username
