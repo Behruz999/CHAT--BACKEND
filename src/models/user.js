@@ -26,7 +26,7 @@ const userSchema = new Schema(
     contacts: {
       type: [
         {
-          type: Types.ObjectId,
+          type: Schema.Types.ObjectId,
           ref: "user",
         },
       ],
@@ -35,7 +35,7 @@ const userSchema = new Schema(
     rooms: {
       type: [
         {
-          type: Types.ObjectId,
+          type: Schema.Types.ObjectId,
           ref: "room",
         },
       ],

@@ -1,18 +1,18 @@
-const { Schema, model, Types } = require("mongoose");
+const { Schema, model } = require("mongoose");
 
 const messageSchema = new Schema(
   {
     sender: {
-      type: Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "user",
       required: true,
     },
     receiver: {
-      type: Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "user",
     },
     room: {
-      type: Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "room",
       default: null,
     },
@@ -21,7 +21,7 @@ const messageSchema = new Schema(
       required: true,
     },
     replyTo: {
-      type: Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "message",
       default: null,
     },

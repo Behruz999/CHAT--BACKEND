@@ -1,6 +1,7 @@
 const UserModel = require("../models/user");
 const MessageModel = require("../models/message");
 const RoomModel = require("../models/room");
+const ConversationModel = require("../models/conversation");
 const moment = require("moment");
 
 module.exports = (io) => {
@@ -110,73 +111,140 @@ module.exports = (io) => {
       }
     });
 
+    // socket.on("private_message", async (data, cb) => {
+    //   console.log("private_message event received:", data);
+    //   const { senderId, receiverId, message } = data;
+    //   try {
+    //     if (message.trim() === "") {
+    //       cb({ error: "Content required !" });
+    //     }
+    //     const user = await UserModel.findById(senderId);
+
+    //     user.socketId = socket.id;
+
+    //     await user.save();
+
+    //     const receiver = await UserModel.findById(receiverId);
+
+    //     if (receiver) {
+    //       const newMessage = new MessageModel({
+    //         sender: senderId,
+    //         receiver: receiver._id,
+    //         content: message,
+    //         date: moment().format("YYYY-MM-DD HH:mm"),
+    //       });
+    //       await newMessage.save();
+
+    //       // socket.to(receiver.socketId).emit("receive_message", {
+    //       //   ...newMessage.toObject(),
+    //       //   date: newMessage.date.split(" ")[1],
+    //       // });
+
+    //       // io.emit("private_message", {
+    //       //   ...newMessage.toObject(),
+    //       //   date: newMessage.date.split(" ")[1],
+    //       //   isCurrentUser: newMessage.sender.toString() === senderId.toString(),
+    //       // });
+
+    //       // socket.emit("private_message", {
+    //       //   ...newMessage.toObject(),
+    //       //   date: newMessage.date.split(" ")[1],
+    //       //   isCurrentUser: true,
+    //       // });
+
+    //       if (receiver.socketId) {
+    //         socket.to(receiver.socketId).emit("private_message", {
+    //           ...newMessage.toObject(),
+    //           date: newMessage.date.split(" ")[1],
+    //           isCurrentUser: false,
+    //         });
+    //       }
+
+    //       // if (typeof cb === "function") {
+    //       //   cb({
+    //       //     ...newMessage.toObject(),
+    //       //     date: newMessage.date.split(" ")[1],
+    //       //     isCurrentUser: true,
+    //       //   });
+    //       // }
+
+    //       // if (receiver.socketId) {
+    //       //   io.to(receiver.socketId).emit("private_message", {
+    //       //     senderId,
+    //       //     receiverId: receiver._id,
+    //       //     content: message,
+    //       //     date: newMessage.date.split(" ")[1],
+    //       //   });
+    //       //   newMessage.delivered = true;
+    //       //   await newMessage.save();
+    //       // }
+    //     }
+    //   } catch (err) {
+    //     console.error("Error handling private_message:", err);
+    //     if (typeof cb === "function") {
+    //       cb && cb({ error: "Failed to handle private_message" });
+    //     }
+    //   }
+    // });
+
     socket.on("private_message", async (data, cb) => {
       console.log("private_message event received:", data);
-      const { senderId, receiverId, message } = data;
+      const { senderId, receiverId, message, replyToMessageId } = data;
       try {
         if (message.trim() === "") {
           cb({ error: "Content required !" });
         }
         const user = await UserModel.findById(senderId);
 
+        const conversation = await ConversationModel.findOne({
+          participants: { $in: [senderId, receiverId] },
+        });
+
         user.socketId = socket.id;
 
         await user.save();
 
-        const receiver = await UserModel.findById(receiverId);
-
-        if (receiver) {
+        if (conversation) {
           const newMessage = new MessageModel({
             sender: senderId,
-            receiver: receiver._id,
+            receiver: receiverId,
             content: message,
+            replyTo: replyToMessageId && replyToMessageId,
+            date: moment().format("YYYY-MM-DD HH:mm"),
+          });
+
+          await newMessage.save();
+
+          conversation.messages.push(newMessage.id);
+
+          socket.join(conversation.id);
+          io.to(conversation.id).emit("private_message", {
+            ...newMessage.toObject(),
+            date: newMessage.date.split(" ")[1],
+            // isCurrentUser: false,
+          });
+        } else {
+          const newMessage = new MessageModel({
+            sender: senderId,
+            receiver: receiverId,
+            content: message,
+            replyTo: replyToMessageId && replyToMessageId,
             date: moment().format("YYYY-MM-DD HH:mm"),
           });
           await newMessage.save();
 
-          // socket.to(receiver.socketId).emit("receive_message", {
-          //   ...newMessage.toObject(),
-          //   date: newMessage.date.split(" ")[1],
-          // });
+          const newConversation = new ConversationModel({
+            participants: [senderId, receiverId],
+            messages: [newMessage.id],
+          });
+          await newConversation.save();
 
-          // io.emit("private_message", {
-          //   ...newMessage.toObject(),
-          //   date: newMessage.date.split(" ")[1],
-          //   isCurrentUser: newMessage.sender.toString() === senderId.toString(),
-          // });
-
-          socket.emit("private_message", {
+          socket.join(newConversation.id);
+          io.to(newConversation.id).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
-            isCurrentUser: true,
+            // isCurrentUser: false,
           });
-
-          if (receiver.socketId) {
-            socket.to(receiver.socketId).emit("private_message", {
-              ...newMessage.toObject(),
-              date: newMessage.date.split(" ")[1],
-              isCurrentUser: false,
-            });
-          }
-
-          // if (typeof cb === "function") {
-          //   cb({
-          //     ...newMessage.toObject(),
-          //     date: newMessage.date.split(" ")[1],
-          //     isCurrentUser: true,
-          //   });
-          // }
-
-          // if (receiver.socketId) {
-          //   io.to(receiver.socketId).emit("private_message", {
-          //     senderId,
-          //     receiverId: receiver._id,
-          //     content: message,
-          //     date: newMessage.date.split(" ")[1],
-          //   });
-          //   newMessage.delivered = true;
-          //   await newMessage.save();
-          // }
         }
       } catch (err) {
         console.error("Error handling private_message:", err);
@@ -262,7 +330,7 @@ module.exports = (io) => {
 
               messageObj.date = messageObj.date.split(" ")[1];
               messageObj.isCurrentUser =
-              messageObj.sender.toString() === senderId.toString();
+                messageObj.sender.toString() === senderId.toString();
 
               messagesCopy.push(messageObj);
             }

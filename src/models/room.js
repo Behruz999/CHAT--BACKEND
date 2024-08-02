@@ -1,4 +1,4 @@
-const { Schema, model, Types } = require("mongoose");
+const { Schema, model } = require("mongoose");
 
 const roomSchema = new Schema(
   {
@@ -16,13 +16,18 @@ const roomSchema = new Schema(
       default: null,
     },
     creator: {
-      type: Types.ObjectId,
+      type: Schema.Types.ObjectId,
       required: true,
     },
+    // conversation: {
+    //   type: Schema.Types.ObjectId,
+    //   ref: "conversation",
+    //   required: true,
+    // },
     members: {
       type: [
         {
-          type: Types.ObjectId,
+          type: Schema.Types.ObjectId,
           ref: "user",
         },
       ],
@@ -31,7 +36,7 @@ const roomSchema = new Schema(
     messages: {
       type: [
         {
-          type: Types.ObjectId,
+          type: Schema.Types.ObjectId,
           ref: "message",
         },
       ],
