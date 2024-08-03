@@ -21,24 +21,48 @@ async function add(req, res, next) {
 }
 
 async function getAll(req, res, next) {
-  const { searchTerm } = req.query;
+  const { searchTerm, roomId, userId } = req.query;
   try {
+    let desiredResponse = {
+      result: [],
+      myRooms: [],
+    };
     let allRooms = [];
 
-    if (searchTerm) {
+    if (searchTerm && roomId) {
       allRooms = await RoomModel.find({
         name: new RegExp(searchTerm, "i"),
-      });
+        _id: { $ne: roomId },
+      }).select("name isPublic members");
+    } else if (searchTerm) {
+      allRooms = await RoomModel.find({
+        name: new RegExp(searchTerm, "i"),
+      }).select("name isPublic members");
     } else {
       allRooms = await RoomModel.find();
     }
 
     const populatedRooms = await RoomModel.populate(allRooms, [
       { path: "members", select: "firstname username" },
-      { path: "messages", select: "content" },
+      // { path: "messages", select: "content" },
     ]);
 
-    return res.status(200).json(populatedRooms);
+    if (userId) {
+      for (const room of populatedRooms) {
+        const isPartOfRoom = room.members.some((r) => r.id == userId);
+
+        if (isPartOfRoom) {
+          desiredResponse.myRooms.push(room);
+        } else {
+          desiredResponse.result.push(room);
+        }
+      }
+    } else {
+      delete desiredResponse.myRooms;
+      desiredResponse.result.push(...populatedRooms);
+    }
+
+    return res.status(200).json(desiredResponse);
   } catch (err) {
     next(err);
   }

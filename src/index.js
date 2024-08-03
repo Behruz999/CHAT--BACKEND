@@ -27,7 +27,7 @@ app.use(express.json());
 
 dbConnection();
 
-sockets(io);
+sockets(io, app);
 
 app.use("/api", allRoutes);
 

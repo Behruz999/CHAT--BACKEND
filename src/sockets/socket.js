@@ -4,12 +4,86 @@ const RoomModel = require("../models/room");
 const ConversationModel = require("../models/conversation");
 const moment = require("moment");
 
-module.exports = (io) => {
+module.exports = (io, app) => {
   io.on("connection", async (socket) => {
     console.log("a user connected: ", socket.id);
 
     socket.on("refresh_sid", async (userIdentifier, socketId) => {
       await UserModel.updateOne({ _id: userIdentifier }, { socketId });
+    });
+
+    app.post("/api/messages/getchatmessages", async (req, res, next) => {
+      const { senderId, receiverId, roomId } = req.query;
+      try {
+        let messages = [];
+        if (roomId) {
+          const conversation = await ConversationModel.findOne({
+            room: roomId,
+          })
+            .populate("messages")
+            .populate("participants", "firstname username img");
+
+          if (!conversation) {
+            return res.status(404).json({ msg: `Conversation not found !` });
+          }
+
+          messages = conversation.messages;
+
+          socket.join(conversation.id);
+        } else if (senderId && receiverId) {
+          const conversation = await ConversationModel.findOne({
+            participants: { $all: [senderId, receiverId] },
+            room: null,
+          }).populate("messages");
+
+          if (!conversation) {
+            return res.status(404).json({ msg: `Conversation not found !` });
+          }
+
+          messages = conversation.messages;
+
+          socket.join(conversation.id);
+        }
+
+        const annotatedMessages = messages.map((message) => ({
+          ...message.toObject(),
+          date: message.date.split(" ")[1],
+        }));
+
+        return res.status(200).json(annotatedMessages);
+      } catch (err) {
+        next(err);
+      }
+    });
+
+    socket.on("communicated_people", async (data) => {
+      const { userId } = data;
+      try {
+        const conversations = await ConversationModel.find({
+          participants: { $in: [userId] },
+          room: null,
+        }).populate("participants", "-bio -password -contacts -rooms");
+
+        io.to(socket.id).emit("communicated_chats", { conversations });
+      } catch (err) {
+        console.error(`Error handling communicated_chats:`, err);
+      }
+    });
+
+    socket.on("communicated_rooms", async (data) => {
+      const { userId } = data;
+      try {
+        const conversations = await ConversationModel.find({
+          participants: { $in: [userId] },
+          room: { $ne: null },
+        })
+          .populate("participants", "-bio -password -contacts -rooms")
+          .populate("room", "-desc -password -messages");
+
+        io.to(socket.id).emit("communicated_rooms", { conversations });
+      } catch (err) {
+        console.error(`Error handling communicated_rooms:`, err);
+      }
     });
 
     // socket.on("login", async (username, callback) => {
@@ -190,67 +264,79 @@ module.exports = (io) => {
     socket.on("private_message", async (data, cb) => {
       console.log("private_message event received:", data);
       const { senderId, receiverId, message, replyToMessageId } = data;
+
+      // Trim message content to avoid sending empty messages
+      if (message.trim() === "") {
+        return cb({ error: "Content required!" });
+      }
+
       try {
-        if (message.trim() === "") {
-          cb({ error: "Content required !" });
-        }
+        // Find the user by ID
         const user = await UserModel.findById(senderId);
 
-        const conversation = await ConversationModel.findOne({
-          participants: { $in: [senderId, receiverId] },
-        });
+        if (!user) {
+          return cb({ error: "User not found" });
+        }
 
+        // Update user's socket ID
         user.socketId = socket.id;
-
         await user.save();
 
+        // Find or create a conversation between the two users
+        let conversation = await ConversationModel.findOne({
+          participants: { $all: [senderId, receiverId] },
+        });
+
+        // Create new message object
+        const newMessage = new MessageModel({
+          sender: senderId,
+          receiver: receiverId,
+          content: message,
+          replyTo: replyToMessageId ? replyToMessageId : null,
+          date: moment().format("YYYY-MM-DD HH:mm"),
+        });
+
+        // Save the new message to the database
+        await newMessage.save();
+
         if (conversation) {
-          const newMessage = new MessageModel({
-            sender: senderId,
-            receiver: receiverId,
-            content: message,
-            replyTo: replyToMessageId && replyToMessageId,
-            date: moment().format("YYYY-MM-DD HH:mm"),
-          });
+          // Join the socket to the conversation room
+          // socket.join(conversation.id);
 
-          await newMessage.save();
-
+          // Add the new message to the conversation
           conversation.messages.push(newMessage.id);
+          await conversation.save();
 
-          socket.join(conversation.id);
+          // Emit the message to the room
           io.to(conversation.id).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
-            // isCurrentUser: false,
           });
         } else {
-          const newMessage = new MessageModel({
-            sender: senderId,
-            receiver: receiverId,
-            content: message,
-            replyTo: replyToMessageId && replyToMessageId,
-            date: moment().format("YYYY-MM-DD HH:mm"),
-          });
-          await newMessage.save();
-
-          const newConversation = new ConversationModel({
+          // Create a new conversation if one doesn't exist
+          conversation = new ConversationModel({
             participants: [senderId, receiverId],
             messages: [newMessage.id],
           });
-          await newConversation.save();
+          await conversation.save();
 
-          socket.join(newConversation.id);
-          io.to(newConversation.id).emit("private_message", {
+          // Join the socket to the new conversation room
+          // socket.join(conversation.id);
+
+          // Emit the message to the new room
+          io.to(conversation.id).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
-            // isCurrentUser: false,
           });
         }
+
+        // Optionally call the callback to acknowledge message reception
+        if (cb) cb({ success: true });
       } catch (err) {
         console.error("Error handling private_message:", err);
-        if (typeof cb === "function") {
-          cb && cb({ error: "Failed to handle private_message" });
-        }
+
+        // Call the callback with an error message
+        if (cb) cb({ error: "Failed to handle private_message" });
       }
     });
 

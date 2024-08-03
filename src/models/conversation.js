@@ -8,6 +8,11 @@ const conversationSchema = new Schema(
         ref: "User",
       },
     ],
+    room: {
+      type: Schema.Types.ObjectId,
+      ref: "room",
+      default: null,
+    },
     messages: {
       type: [
         {
