@@ -5,7 +5,7 @@ const conversationSchema = new Schema(
     participants: [
       {
         type: Schema.Types.ObjectId,
-        ref: "User",
+        ref: "user",
       },
     ],
     room: {

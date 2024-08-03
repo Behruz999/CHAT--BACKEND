@@ -57,20 +57,34 @@ module.exports = (io, app) => {
     });
 
     socket.on("communicated_people", async (data) => {
+      console.log(data, "- data on communicated_people");
       const { userId } = data;
       try {
         const conversations = await ConversationModel.find({
           participants: { $in: [userId] },
           room: null,
-        }).populate("participants", "-bio -password -contacts -rooms");
+        })
+          .populate("participants", "-bio -password -contacts -rooms")
+          .populate(
+            "messages",
+            "sender receiver content delivered replyTo date"
+          ).lean();
 
-        io.to(socket.id).emit("communicated_chats", { conversations });
+        for (const conversation of conversations) {
+          conversation.participants = conversation.participants.filter((p) => {
+            return p._id != userId;
+          });
+          conversation.participants = conversation.participants[0];
+        }
+
+        io.to(socket.id).emit("communicated_people", { conversations });
       } catch (err) {
         console.error(`Error handling communicated_chats:`, err);
       }
     });
 
     socket.on("communicated_rooms", async (data) => {
+      console.log(data, "- data on communicated_rooms");
       const { userId } = data;
       try {
         const conversations = await ConversationModel.find({
