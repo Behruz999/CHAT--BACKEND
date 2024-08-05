@@ -57,24 +57,37 @@ module.exports = (io, app) => {
     });
 
     socket.on("communicated_people", async (data) => {
-      console.log(data, "- data on communicated_people");
       const { userId } = data;
       try {
         const conversations = await ConversationModel.find({
           participants: { $in: [userId] },
           room: null,
         })
-          .populate("participants", "-bio -password -contacts -rooms")
+          .populate(
+            "participants",
+            "-bio -password -contacts -rooms -updatedAt -createdAt"
+          )
           .populate(
             "messages",
             "sender receiver content delivered replyTo date"
-          ).lean();
+          )
+          .lean();
 
-        for (const conversation of conversations) {
-          conversation.participants = conversation.participants.filter((p) => {
-            return p._id != userId;
-          });
-          conversation.participants = conversation.participants[0];
+        for (let conversation of conversations) {
+          const otherParticipants = conversation.participants.filter(
+            (p) => p._id != userId
+          );
+          const otherParticipant = otherParticipants[0];
+
+          if (otherParticipant) {
+            // Flatten participant fields into the main object
+            conversation.userId = otherParticipant._id;
+            conversation.firstname = otherParticipant.firstname;
+            conversation.username = otherParticipant.username;
+            conversation.socketId = otherParticipant.socketId;
+          }
+
+          delete conversation.participants;
         }
 
         io.to(socket.id).emit("communicated_people", { conversations });
@@ -84,7 +97,6 @@ module.exports = (io, app) => {
     });
 
     socket.on("communicated_rooms", async (data) => {
-      console.log(data, "- data on communicated_rooms");
       const { userId } = data;
       try {
         const conversations = await ConversationModel.find({
