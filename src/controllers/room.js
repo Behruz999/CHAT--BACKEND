@@ -1,8 +1,16 @@
+const UserModel = require("../models/user");
 const RoomModel = require("../models/room");
+const ConversationModel = require("../models/conversation");
 
 async function add(req, res, next) {
   const { name, desc, creator, members } = req.body;
   try {
+    const existUser = await UserModel.findById(creator);
+
+    if (!existUser) {
+      return res.status(404).json({ msg: `User not found !` });
+    }
+
     const newRoom = new RoomModel({
       name,
       desc,
@@ -12,7 +20,17 @@ async function add(req, res, next) {
       isPublic: req.body?.isPublic && req.body?.isPublic,
     });
 
+    const newConversation = new ConversationModel({
+      participants: members ? [...members, creator] : [creator],
+      room: newRoom._id,
+      messages: [],
+    });
+
+    existUser.rooms.push(newRoom._id);
+
+    await newConversation.save();
     await newRoom.save();
+    await existUser.save();
 
     return res.status(201).json(newRoom);
   } catch (err) {
@@ -98,6 +116,9 @@ async function getOne(req, res, next) {
 async function editOne(req, res, next) {
   try {
     const existRoom = await RoomModel.findById(req.params.id);
+    const existConversation = await ConversationModel.findOne({
+      room: existRoom._id,
+    });
 
     if (!existRoom) {
       return res.status(400).json({ msg: `Room not found !` });
@@ -108,15 +129,25 @@ async function editOne(req, res, next) {
         for (const { status, content } of req.body.members) {
           if (status == 1) {
             const foundRoomIndex = existRoom.members.indexOf(content);
+            const foundParticipantIndex =
+              existConversation.participants.indexOf(content);
 
             if (foundRoomIndex === -1) {
               existRoom.members.push(content);
             }
+            if (foundParticipantIndex === -1) {
+              existConversation.participants.push(content);
+            }
           } else if (status == 0) {
             const foundRoomIndex = existRoom.members.indexOf(content);
+            const foundParticipantIndex =
+              existConversation.participants.indexOf(content);
 
             if (foundRoomIndex !== -1) {
               existRoom.members.splice(content, 1);
+            }
+            if (foundParticipantIndex !== -1) {
+              existConversation.participants.splice(content, 1);
             }
           }
         }

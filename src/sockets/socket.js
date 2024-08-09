@@ -3,58 +3,33 @@ const MessageModel = require("../models/message");
 const RoomModel = require("../models/room");
 const ConversationModel = require("../models/conversation");
 const moment = require("moment");
+const socketMap = new Map();
 
 module.exports = (io, app) => {
   io.on("connection", async (socket) => {
     console.log("a user connected: ", socket.id);
 
-    socket.on("refresh_sid", async (userIdentifier, socketId) => {
-      await UserModel.updateOne({ _id: userIdentifier }, { socketId });
-    });
-
-    app.post("/api/messages/getchatmessages", async (req, res, next) => {
-      const { senderId, receiverId, roomId } = req.query;
+    socket.on("refresh_sid", async (userIdentifier, newSocketId) => {
       try {
-        let messages = [];
-        if (roomId) {
-          const conversation = await ConversationModel.findOne({
-            room: roomId,
-          })
-            .populate("messages")
-            .populate("participants", "firstname username img");
+        await UserModel.updateOne(
+          { _id: userIdentifier },
+          { socketId: newSocketId }
+        );
+        console.log(
+          `${socket.id} - server socket`,
+          `${newSocketId} - newSocketId from client`
+        );
 
-          if (!conversation) {
-            return res.status(404).json({ msg: `Conversation not found !` });
-          }
-
-          messages = conversation.messages;
-
-          socket.join(conversation.id);
-        } else if (senderId && receiverId) {
-          const conversation = await ConversationModel.findOne({
-            participants: { $all: [senderId, receiverId] },
-            room: null,
-          }).populate("messages");
-
-          if (!conversation) {
-            return res.status(404).json({ msg: `Conversation not found !` });
-          }
-
-          messages = conversation.messages;
-
-          socket.join(conversation.id);
-        }
-
-        const annotatedMessages = messages.map((message) => ({
-          ...message.toObject(),
-          date: message.date.split(" ")[1],
-        }));
-
-        return res.status(200).json(annotatedMessages);
+        // Update the socketMap
+        socketMap.delete(socket.id);
+        socketMap.set(newSocketId, socket);
+        // console.log(`Updated socketMap with new ID: ${newSocketId}`);
       } catch (err) {
-        next(err);
+        console.error("Error updating socket ID:", err);
       }
     });
+
+    socketMap.set(socket.id, socket);
 
     socket.on("communicated_people", async (data) => {
       const { userId } = data;
@@ -81,7 +56,9 @@ module.exports = (io, app) => {
 
           if (otherParticipant) {
             // Flatten participant fields into the main object
-            conversation.userId = otherParticipant._id;
+            // conversation.userId = otherParticipant._id;
+            conversation.convId = conversation._id;
+            conversation._id = otherParticipant._id;
             conversation.firstname = otherParticipant.firstname;
             conversation.username = otherParticipant.username;
             conversation.socketId = otherParticipant.socketId;
@@ -103,77 +80,15 @@ module.exports = (io, app) => {
           participants: { $in: [userId] },
           room: { $ne: null },
         })
-          .populate("participants", "-bio -password -contacts -rooms")
-          .populate("room", "-desc -password -messages");
+          // .populate("participants", "-bio -password -contacts -rooms")
+          .select("-participants -messages")
+          .populate("room", "-desc -password -messages -creator");
 
         io.to(socket.id).emit("communicated_rooms", { conversations });
       } catch (err) {
         console.error(`Error handling communicated_rooms:`, err);
       }
     });
-
-    // socket.on("login", async (username, callback) => {
-    //   console.log("login event received for user:", username);
-    //   let user = await UserModel.findOne({ username });
-    //   if (!user) {
-    //     user = new UserModel({ username });
-    //     await user.save();
-    //   }
-    //   user.socketId = socket.id;
-    //   await user.save();
-
-    //   socket.userId = user._id;
-    //   callback(user._id);
-
-    //   // const undeliveredMessages = await MessageModel.find({
-    //   //   receiver: user._id,
-    //   //   delivered: false,
-    //   // });
-
-    //   // for (const message of undeliveredMessages) {
-    //   //   io.to(socket.id).emit("private_message", {
-    //   //     senderId: message.sender,
-    //   //     receiverId: message.receiver,
-    //   //     content: message.content,
-    //   //     date: message.date.split(" ")[1],
-    //   //   });
-
-    //   //   message.delivered = true;
-    //   //   await message.save();
-    //   // }
-    // });
-
-    // socket.on("all_rooms", async (data) => {
-    //   const { senderId } = data;
-    //   const allRooms = await RoomModel.find({
-    //     members: { $in: [senderId] },
-    //   }).select("-desc -password -creator -createdAt -updatedAt");
-
-    //   for (const room of allRooms) {
-    //     if (Array.isArray(room.messages) && room.messages.length !== 0) {
-    //       const lastMessageId = room.messages[room.messages.length - 1];
-    //       const lastMessage = await MessageModel.findById(lastMessageId).select(
-    //         "sender content delivered date updatedAt"
-    //       );
-
-    //       allRooms[room]["messages"] = [
-    //         {
-    //           ...lastMessage,
-    //           isMe: lastMessage?.sender == senderId,
-    //         },
-    //       ];
-    //     }
-    //   }
-
-    //   const populatedRooms = await RoomModel.populate(allRooms, [
-    //     { path: "members", select: "firstname username" },
-    //     { path: "messages", select: "content" },
-    //   ]);
-
-    //   io.to(socket.id).emit("all_rooms", {
-    //     rooms: populatedRooms,
-    //   });
-    // });
 
     socket.on("all_rooms", async (data) => {
       try {
@@ -211,82 +126,6 @@ module.exports = (io, app) => {
       }
     });
 
-    // socket.on("private_message", async (data, cb) => {
-    //   console.log("private_message event received:", data);
-    //   const { senderId, receiverId, message } = data;
-    //   try {
-    //     if (message.trim() === "") {
-    //       cb({ error: "Content required !" });
-    //     }
-    //     const user = await UserModel.findById(senderId);
-
-    //     user.socketId = socket.id;
-
-    //     await user.save();
-
-    //     const receiver = await UserModel.findById(receiverId);
-
-    //     if (receiver) {
-    //       const newMessage = new MessageModel({
-    //         sender: senderId,
-    //         receiver: receiver._id,
-    //         content: message,
-    //         date: moment().format("YYYY-MM-DD HH:mm"),
-    //       });
-    //       await newMessage.save();
-
-    //       // socket.to(receiver.socketId).emit("receive_message", {
-    //       //   ...newMessage.toObject(),
-    //       //   date: newMessage.date.split(" ")[1],
-    //       // });
-
-    //       // io.emit("private_message", {
-    //       //   ...newMessage.toObject(),
-    //       //   date: newMessage.date.split(" ")[1],
-    //       //   isCurrentUser: newMessage.sender.toString() === senderId.toString(),
-    //       // });
-
-    //       // socket.emit("private_message", {
-    //       //   ...newMessage.toObject(),
-    //       //   date: newMessage.date.split(" ")[1],
-    //       //   isCurrentUser: true,
-    //       // });
-
-    //       if (receiver.socketId) {
-    //         socket.to(receiver.socketId).emit("private_message", {
-    //           ...newMessage.toObject(),
-    //           date: newMessage.date.split(" ")[1],
-    //           isCurrentUser: false,
-    //         });
-    //       }
-
-    //       // if (typeof cb === "function") {
-    //       //   cb({
-    //       //     ...newMessage.toObject(),
-    //       //     date: newMessage.date.split(" ")[1],
-    //       //     isCurrentUser: true,
-    //       //   });
-    //       // }
-
-    //       // if (receiver.socketId) {
-    //       //   io.to(receiver.socketId).emit("private_message", {
-    //       //     senderId,
-    //       //     receiverId: receiver._id,
-    //       //     content: message,
-    //       //     date: newMessage.date.split(" ")[1],
-    //       //   });
-    //       //   newMessage.delivered = true;
-    //       //   await newMessage.save();
-    //       // }
-    //     }
-    //   } catch (err) {
-    //     console.error("Error handling private_message:", err);
-    //     if (typeof cb === "function") {
-    //       cb && cb({ error: "Failed to handle private_message" });
-    //     }
-    //   }
-    // });
-
     socket.on("private_message", async (data, cb) => {
       console.log("private_message event received:", data);
       const { senderId, receiverId, message, replyToMessageId } = data;
@@ -310,9 +149,9 @@ module.exports = (io, app) => {
 
         // Find or create a conversation between the two users
         let conversation = await ConversationModel.findOne({
-          participants: { $all: [senderId, receiverId] },
+          participants: { $in: [senderId, receiverId] },
+          room: null,
         });
-
         // Create new message object
         const newMessage = new MessageModel({
           sender: senderId,
@@ -326,15 +165,12 @@ module.exports = (io, app) => {
         await newMessage.save();
 
         if (conversation) {
-          // Join the socket to the conversation room
-          // socket.join(conversation.id);
-
           // Add the new message to the conversation
           conversation.messages.push(newMessage.id);
           await conversation.save();
 
           // Emit the message to the room
-          io.to(conversation.id).emit("private_message", {
+          io.to(conversation.id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
@@ -343,26 +179,22 @@ module.exports = (io, app) => {
           conversation = new ConversationModel({
             participants: [senderId, receiverId],
             messages: [newMessage.id],
+            room: null,
           });
           await conversation.save();
 
-          // Join the socket to the new conversation room
-          // socket.join(conversation.id);
-
           // Emit the message to the new room
-          io.to(conversation.id).emit("private_message", {
+          io.to(conversation.id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
         }
 
         // Optionally call the callback to acknowledge message reception
-        if (cb) cb({ success: true });
+        // if (cb) cb({ success: true });
       } catch (err) {
         console.error("Error handling private_message:", err);
-
-        // Call the callback with an error message
-        if (cb) cb({ error: "Failed to handle private_message" });
+        cb && cb({ error: "Failed to handle private_message" });
       }
     });
 
@@ -375,6 +207,7 @@ module.exports = (io, app) => {
         }
 
         const room = await RoomModel.findById(roomId);
+        let populatedMessage;
 
         if (room) {
           const newMessage = new MessageModel({
@@ -385,9 +218,34 @@ module.exports = (io, app) => {
             date: moment().format("YYYY-MM-DD HH:mm"),
           });
 
-          room.messages.push(newMessage._id);
-          await room.save();
           await newMessage.save();
+
+          let conversation = await ConversationModel.findOne({
+            room: roomId,
+          });
+
+          if (!conversation) {
+            conversation = new ConversationModel({
+              participants: [senderId],
+              room: roomId,
+              messages: [newMessage.id],
+            });
+            await conversation.save();
+          } else {
+            conversation.messages.push(newMessage.id);
+            await conversation.save();
+          }
+
+          populatedMessage = await MessageModel.populate(newMessage, [
+            {
+              path: "replyTo",
+              select: "content delivered updatedAt createdAt",
+            },
+            {
+              path: "sender",
+              select: "firstname username img",
+            },
+          ]);
 
           // io.emit("room_chat_messages", {
           //   ...newMessage,
@@ -403,17 +261,10 @@ module.exports = (io, app) => {
           //   // isCurrentUser: false,
           // });
 
-          socket.to(roomId).emit("room_chat_messages", {
-            ...newMessage.toObject(),
-            date: newMessage.date.split(" ")[1],
-            sender: senderId,
-          });
-
-          // Notify the sender specifically with isCurrentUser set to true
-          socket.emit("room_chat_messages", {
-            ...newMessage.toObject(),
-            date: newMessage.date.split(" ")[1],
-            isCurrentUser: true,
+          io.to(conversation.id).emit("room_chat_messages", {
+            ...populatedMessage.toObject(),
+            date: populatedMessage.date.split(" ")[1],
+            // sender: senderId,
           });
         } else {
           cb && cb({ error: "Room not found !" });
@@ -425,146 +276,736 @@ module.exports = (io, app) => {
     });
 
     socket.on("room_details", async (data, cb) => {
-      console.log(data, "- data room_details");
       const { senderId, roomId, roomPassword, isJoin } = data;
       try {
+        if (!senderId || !roomId) {
+          throw new Error(`User and room identifiers required ! `);
+        }
         const user = await UserModel.findById(senderId);
-        let room = await RoomModel.findById(roomId)
-          .populate("messages")
-          .populate("members");
+        const room = await RoomModel.findById(roomId);
+        const conversation = await ConversationModel.findOne({ room: roomId })
+          .populate({
+            path: "participants",
+            select: "firstname username img updatedAt",
+          })
+          .populate({
+            path: "messages",
+            populate: {
+              path: "sender",
+              model: "user",
+              select: "firstname username img updatedAt",
+            },
+            select: "-room",
+          })
+          .populate({
+            path: "room",
+            populate: {
+              path: "members",
+              model: "user",
+              select: "firstname username img updatedAt",
+            },
+            select: "-messages",
+          });
+        const conversationPlain = conversation.toObject();
 
-        if (room) {
-          socket.join(roomId);
-          let messagesCopy = [];
-          if (room.messages.length !== 0) {
-            for (const message of room.messages) {
-              let messageObj = message.toObject ? message.toObject() : message;
+        if (!user || !conversation || !room) {
+          throw new Error(
+            `Whether user or conversation or room credentials not found ! `
+          );
+        }
 
-              messageObj.date = messageObj.date.split(" ")[1];
-              messageObj.isCurrentUser =
-                messageObj.sender.toString() === senderId.toString();
+        const amIMember = conversationPlain.participants.some(
+          (p) => p._id == senderId
+        );
 
-              messagesCopy.push(messageObj);
-            }
+        let messagesCopy = [];
+        let payload = {};
+
+        if (conversationPlain?.messages.length !== 0) {
+          for (const message of conversationPlain.messages) {
+            const messageObj = message.toObject ? message.toObject() : message;
+
+            messageObj.date = messageObj.date.split(" ")[1];
+            messagesCopy.push(messageObj);
           }
-          // room.messages = messagesCopy;
-          if (!("isJoin" in data)) {
-            let payload = {
+        }
+
+        if (!amIMember) {
+          if (!room?.isPublic) {
+            payload = {
               roomDetails: {
-                ...room.toObject(),
-                // isMember: room.members.includes(senderId),
-                messages: messagesCopy,
-                isMember: room.members.some((m) => m.id == senderId),
+                ...conversationPlain,
+                messages: [],
+                isMember: amIMember,
               },
             };
-            if (!room.isPublic && !payload.roomDetails.isMember) {
-              payload.roomDetails.messages = [];
-            }
-            io.to(user.socketId).emit("room_details", payload);
-            // io.to(roomId).emit("room_details", payload);
-          } else if (isJoin == true) {
+          } else if (room?.isPublic && !("isJoin" in data)) {
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: messagesCopy,
+                isMember: amIMember,
+              },
+            };
+          }
+          if (isJoin == true) {
             if (
-              !room.isPublic &&
-              (!roomPassword || roomPassword != room.password)
+              !roomPassword ||
+              roomPassword != conversationPlain.room.password
             ) {
-              cb && cb({ error: `Matching password required !` });
+              throw new Error(`Matching password required !`);
             } else {
-              if (!room.isPublic && roomPassword == room.password) {
-                room.members.push(senderId);
-                await room.save();
-                socket.join(roomId);
-                const joinMessage = {
-                  info: `${
-                    user.firstname ? user.firstname : user.username
-                  } joined`,
-                  roomDetails: {
-                    ...room.toObject(),
-                    // isMember: room.members.includes(senderId),
-                    messages: messagesCopy,
-                    isMember: room.members.some((m) => m.id == senderId),
-                  },
-                };
-                io.to(user.socketId).emit("room_details", joinMessage);
-                // io.to(roomId).emit("room_details", joinMessage);
-              } else if (room.isPublic) {
-                room.members.push(senderId);
-                await room.save();
-                // socket.join(roomId);
-                const joinMessage = {
-                  info: `${
-                    user.firstname ? user.firstname : user.username
-                  } joined`,
-                  roomDetails: {
-                    ...room.toObject(),
-                    // isMember: room.members.includes(senderId),
-                    messages: messagesCopy,
-                    isMember: room.members.some((m) => m.id == senderId),
-                  },
-                };
-                io.to(user.socketId).emit("room_details", joinMessage);
-                // io.to(roomId).emit("room_details", joinMessage);
-              }
+              socket.join(conversationPlain._id);
+              conversation.participants.push(user._id);
+              room.members.push(user._id);
+              await conversation.save();
+              await room.save();
+              payload = {
+                roomDetails: {
+                  ...conversationPlain,
+                  messages: messagesCopy,
+                  isMember: true,
+                },
+                // info: `${
+                //   user.firstname ? user.firstname : user.username
+                // }'s joined`,
+              };
             }
           } else if (isJoin == false) {
-            if (room && user) {
-              room.members = room.members.filter((m) => m != senderId);
-              await room.save();
-              socket.leave(roomId);
-              const leaveMessage = {
-                info: `${user.firstname ? user.firstname : user.username} left`,
-                roomDetails: {
-                  ...room.toObject(),
-                  // isMember: room.members.includes(senderId),
-                  messages: messagesCopy,
-                  isMember: room.members.some((m) => m.id == senderId),
-                },
-              };
-              io.to(user.socketId).emit("room_details", leaveMessage);
-              // io.to(roomId).emit("room_details", leaveMessage);
-            } else {
-              cb && cb({ error: "Whether room or user not found !" });
-            }
+            throw new Error(
+              `Invalid command. The command you attempted is not recognized or supported by the server.`
+            );
           }
         } else {
-          cb && cb({ error: "Room not found !" });
+          if (!room.isPublic) {
+            if (!("isJoin" in data)) {
+              payload = {
+                roomDetails: {
+                  ...conversationPlain,
+                  messages: messagesCopy,
+                  isMember: true,
+                },
+              };
+            }
+            if (isJoin == false) {
+              socket.leave(conversationPlain._id);
+              room.members.pull(senderId);
+              conversation.participants.pull(senderId);
+              await room.save();
+              await conversation.save();
+              payload = {
+                roomDetails: {
+                  ...conversationPlain,
+                  messages: [],
+                  isMember: false,
+                },
+                // info: `${user.firstname ? user.firstname : user.username}'s left`,
+              };
+            } else if (isJoin == true) {
+              throw new Error(
+                `Invalid command. The command you attempted is not recognized or supported by the server.`
+              );
+            }
+          } else {
+            if (!("isJoin" in data)) {
+              payload = {
+                roomDetails: {
+                  ...conversationPlain,
+                  messages: messagesCopy,
+                  isMember: amIMember,
+                },
+              };
+            }
+            if (isJoin == false) {
+              socket.leave(conversationPlain._id);
+              room.members.pull(senderId);
+              conversation.participants.pull(senderId);
+              await room.save();
+              await conversation.save();
+              payload = {
+                roomDetails: {
+                  ...conversationPlain,
+                  messages: messagesCopy,
+                  isMember: false,
+                },
+                // info: `${user.firstname ? user.firstname : user.username}'s left`,
+              };
+            } else if (isJoin == true) {
+              throw new Error(
+                `Invalid command. The command you attempted is not recognized or supported by the server.`
+              );
+            }
+          }
         }
+
+        if ("isJoin" in data && isJoin == true) {
+          io.to(conversationPlain._id).emit("room_details", {
+            info: `${user.firstname ? user.firstname : user.username}'s joined`,
+          });
+        } else if ("isJoin" in data && isJoin == false) {
+          io.to(conversationPlain._id).emit("room_details", {
+            info: `${user.firstname ? user.firstname : user.username}'s left`,
+          });
+        }
+
+        io.to(socket.id).emit("room_details", payload);
       } catch (err) {
         console.error(`Error handling room_details:`, err);
-        cb && cb({ error: "Failed to handle room_details" });
+        cb && cb({ error: err });
       }
     });
-
-    // socket.on("leave_room", async (data, cb) => {
-    //   const { senderId, roomId } = data;
-    //   try {
-    //     const room = await RoomModel.findById(roomId);
-    //     const user = await UserModel.findById(senderId);
-
-    //     if (room && user) {
-    //       room.members = room.members.filter((m) => {
-    //         return m != senderId;
-    //       });
-    //       await room.save();
-    //       socket.leave(roomId);
-    //       io.to(roomId).emit("room_chat_messages", {
-    //         info: `${user.firstname ? user.firstname : user.username} left`,
-    //         roomDetails: {
-    //           ...room,
-    //           isMember: room.members.includes(senderId),
-    //         },
-    //       });
-    //     } else {
-    //       cb && cb({ error: "Whether room or user not found !" });
-    //     }
-    //   } catch (err) {
-    //     console.error(`Error handling join_room:`, err);
-    //     cb && cb({ error: "Failed to handle join_room" });
-    //   }
-    // });
 
     socket.on("disconnect", async () => {
       console.log("user disconnected:", socket.id);
       await UserModel.updateOne({ socketId: socket.id }, { socketId: null });
+      socketMap.delete(socket.id);
     });
   });
+
+  app.post("/api/messages/getchatmessages", async (req, res, next) => {
+    const { senderId, receiverId, roomId, socketId } = req.query;
+    try {
+      let messages = [];
+      let conversationId;
+
+      const userSocket = socketMap.get(socketId);
+
+      if (!userSocket) {
+        return res.status(400).json({ msg: "Socket not found!" });
+      }
+
+      if (roomId) {
+        // room conversation logic
+        const conversation = await ConversationModel.findOne({ room: roomId })
+          .populate("messages")
+          .populate("participants", "firstname username img");
+
+        if (!conversation) {
+          return res.status(404).json({ msg: "Conversation not found!" });
+        }
+
+        messages = conversation.messages;
+        conversationId = conversation.id;
+      } else if (senderId && receiverId) {
+        // one-to-one conversation logic
+        const conversation = await ConversationModel.findOne({
+          participants: { $in: [senderId, receiverId] },
+          room: null,
+        }).populate("messages");
+
+        if (!conversation) {
+          return res.status(404).json({ msg: "Conversation not found!" });
+        }
+
+        messages = conversation.messages;
+        conversationId = conversation.id;
+      }
+
+      const annotatedMessages = messages.map((message) => ({
+        ...message.toObject(),
+        date: message.date.split(" ")[1],
+      }));
+
+      // console.log(userSocket.id, "- userSockettttttttt before join");
+      // console.log(userSocket.rooms, "- userSocket rooomsss before join");
+      if (conversationId) {
+        userSocket.join(conversationId);
+        // console.log(
+        //   userSocket.rooms,
+        //   "- usersocket's rooms after joining !!!!!!!"
+        // );
+        // console.log(`${userSocket.id} - Joined room: ${conversationId}`);
+      } else {
+        console.warn("No conversation ID found for joining");
+      }
+
+      // // Join the conversation room if an ID is found
+      // if (conversationId) {
+      //   const userId = socketMap.get(socketId);
+      //   if (userId) {
+      //     // Find the user's socket based on their ID
+      //     const userSocket = Array.from(io.sockets.sockets.values()).find(
+      //       (s) => socketMap.get(s.id) === userId
+      //     );
+
+      //     if (userSocket) {
+      //       userSocket.join(conversationId);
+      //       console.log(`${userSocket.id} joined room: ${conversationId}`);
+      //     } else {
+      //       console.warn("User socket not found");
+      //     }
+      //   } else {
+      //     console.warn("No user ID found for socket");
+      //   }
+      // } else {
+      //   console.warn("No conversation ID found for joining");
+      // }
+
+      return res.status(200).json(annotatedMessages);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.post("/api/rooms/roomdetails", async (req, res, next) => {
+    const { senderId, roomId, roomPassword, isJoin, socketId } = req.body;
+    try {
+      const userSocket = socketMap.get(socketId);
+
+      if (!userSocket) {
+        return res.status(400).json({ msg: "Socket not found !" });
+      }
+      if (!senderId || !roomId) {
+        return res
+          .status(400)
+          .json({ msg: `User and room identifiers required ! ` });
+      }
+      const user = await UserModel.findById(senderId);
+      const room = await RoomModel.findById(roomId);
+      const conversation = await ConversationModel.findOne({ room: roomId })
+        .populate({
+          path: "participants",
+          select: "firstname username img updatedAt",
+        })
+        .populate({
+          path: "messages",
+          populate: {
+            path: "sender",
+            model: "user",
+            select: "firstname username img updatedAt",
+          },
+          select: "-room",
+        })
+        .populate({
+          path: "room",
+          populate: {
+            path: "members",
+            model: "user",
+            select: "firstname username img updatedAt",
+          },
+          select: "-messages",
+        });
+      const conversationPlain = conversation.toObject();
+
+      if (!user || !conversation || !room) {
+        return res
+          .status(404)
+          .json({ msg: `Whether user or conversation or room credentials not found !` });
+      }
+
+      const amIMember = conversationPlain.participants.some(
+        (p) => p._id == senderId
+      );
+
+      let messagesCopy = [];
+      let payload = {};
+
+      if (conversationPlain?.messages.length !== 0) {
+        for (const message of conversationPlain.messages) {
+          const messageObj = message.toObject ? message.toObject() : message;
+
+          messageObj.date = messageObj.date.split(" ")[1];
+          messagesCopy.push(messageObj);
+        }
+      }
+
+      if (!amIMember) {
+        if (!room?.isPublic) {
+          payload = {
+            roomDetails: {
+              ...conversationPlain,
+              messages: [],
+              isMember: amIMember,
+            },
+          };
+        } else if (room?.isPublic && !("isJoin" in req.body)) {
+          payload = {
+            roomDetails: {
+              ...conversationPlain,
+              messages: messagesCopy,
+              isMember: amIMember,
+            },
+          };
+        }
+        if (isJoin == true) {
+          if (
+            !roomPassword ||
+            roomPassword != conversationPlain.room.password
+          ) {
+            return res
+            .status(400)
+            .json({ msg: `Matching password required !` });
+          } else {
+            userSocket.join(conversationPlain._id);
+            conversation.participants.push(user._id);
+            room.members.push(user._id);
+            await conversation.save();
+            await room.save();
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: messagesCopy,
+                isMember: true,
+              },
+            };
+          }
+        } else if (isJoin == false) {
+          return res
+          .status(400)
+          .json({ msg: `Invalid command. The command you attempted is not recognized or supported by the server.` });
+        }
+      } else {
+        if (!room.isPublic) {
+          if (!("isJoin" in req.body)) {
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: messagesCopy,
+                isMember: true,
+              },
+            };
+          }
+          if (isJoin == false) {
+            userSocket.leave(conversationPlain._id);
+            room.members.pull(senderId);
+            conversation.participants.pull(senderId);
+            await room.save();
+            await conversation.save();
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: [],
+                isMember: false,
+              },
+            };
+          } else if (isJoin == true) {
+            return res
+            .status(400)
+            .json({ msg: `Invalid command. The command you attempted is not recognized or supported by the server.` });
+          }
+        } else {
+          if (!("isJoin" in req.body)) {
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: messagesCopy,
+                isMember: amIMember,
+              },
+            };
+          }
+          if (isJoin == false) {
+            userSocket.leave(conversationPlain._id);
+            room.members.pull(senderId);
+            conversation.participants.pull(senderId);
+            await room.save();
+            await conversation.save();
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: messagesCopy,
+                isMember: false,
+              },
+            };
+          } else if (isJoin == true) {
+            return res
+            .status(400)
+            .json({ msg: `Invalid command. The command you attempted is not recognized or supported by the server.` });
+          }
+        }
+      }
+
+      if ("isJoin" in req.body && isJoin == true) {
+        io.to(conversationPlain._id).emit("room_chat_messages", {
+          info: `${user.firstname ? user.firstname : user.username}'s joined`,
+        });
+      } else if ("isJoin" in req.body && isJoin == false) {
+        io.to(conversationPlain._id).emit("room_chat_messages", {
+          info: `${user.firstname ? user.firstname : user.username}'s left`,
+        });
+      }
+
+      // io.to(userSocket.id).emit("room_details", payload);
+
+      return res.status(200).json(payload);
+    } catch (err) {
+      next(err);
+    }
+  });
 };
+
+// socket.on("login", async (username, callback) => {
+//   console.log("login event received for user:", username);
+//   let user = await UserModel.findOne({ username });
+//   if (!user) {
+//     user = new UserModel({ username });
+//     await user.save();
+//   }
+//   user.socketId = socket.id;
+//   await user.save();
+
+//   socket.userId = user._id;
+//   callback(user._id);
+
+//   // const undeliveredMessages = await MessageModel.find({
+//   //   receiver: user._id,
+//   //   delivered: false,
+//   // });
+
+//   // for (const message of undeliveredMessages) {
+//   //   io.to(socket.id).emit("private_message", {
+//   //     senderId: message.sender,
+//   //     receiverId: message.receiver,
+//   //     content: message.content,
+//   //     date: message.date.split(" ")[1],
+//   //   });
+
+//   //   message.delivered = true;
+//   //   await message.save();
+//   // }
+// });
+
+// socket.on("all_rooms", async (data) => {
+//   const { senderId } = data;
+//   const allRooms = await RoomModel.find({
+//     members: { $in: [senderId] },
+//   }).select("-desc -password -creator -createdAt -updatedAt");
+
+//   for (const room of allRooms) {
+//     if (Array.isArray(room.messages) && room.messages.length !== 0) {
+//       const lastMessageId = room.messages[room.messages.length - 1];
+//       const lastMessage = await MessageModel.findById(lastMessageId).select(
+//         "sender content delivered date updatedAt"
+//       );
+
+//       allRooms[room]["messages"] = [
+//         {
+//           ...lastMessage,
+//           isMe: lastMessage?.sender == senderId,
+//         },
+//       ];
+//     }
+//   }
+
+//   const populatedRooms = await RoomModel.populate(allRooms, [
+//     { path: "members", select: "firstname username" },
+//     { path: "messages", select: "content" },
+//   ]);
+
+//   io.to(socket.id).emit("all_rooms", {
+//     rooms: populatedRooms,
+//   });
+// });
+
+// socket.on("room_details", async (data, cb) => {
+//   console.log(data, "- data room_details");
+//   const { senderId, roomId, roomPassword, isJoin } = data;
+//   try {
+//     const user = await UserModel.findById(senderId);
+//     let room = await RoomModel.findById(roomId)
+//       // .populate("messages")
+//       .populate("members");
+
+//     if (room) {
+//       socket.join(roomId);
+//       let messagesCopy = [];
+//       if (room.messages.length !== 0) {
+//         for (const message of room.messages) {
+//           let messageObj = message.toObject ? message.toObject() : message;
+
+//           messageObj.date = messageObj.date.split(" ")[1];
+//           messageObj.isCurrentUser =
+//             messageObj.sender.toString() === senderId.toString();
+
+//           messagesCopy.push(messageObj);
+//         }
+//       }
+//       // room.messages = messagesCopy;
+//       if (!("isJoin" in data)) {
+//         let payload = {
+//           roomDetails: {
+//             ...room.toObject(),
+//             // isMember: room.members.includes(senderId),
+//             messages: messagesCopy,
+//             isMember: room.members.some((m) => m.id == senderId),
+//           },
+//         };
+//         if (!room.isPublic && !payload.roomDetails.isMember) {
+//           payload.roomDetails.messages = [];
+//         }
+//         io.to(user.socketId).emit("room_details", payload);
+//         // io.to(roomId).emit("room_details", payload);
+//       } else if (isJoin == true) {
+//         if (
+//           !room.isPublic &&
+//           (!roomPassword || roomPassword != room.password)
+//         ) {
+//           cb && cb({ error: `Matching password required !` });
+//         } else {
+//           if (!room.isPublic && roomPassword == room.password) {
+//             room.members.push(senderId);
+//             await room.save();
+//             socket.join(roomId);
+//             const joinMessage = {
+//               info: `${
+//                 user.firstname ? user.firstname : user.username
+//               } joined`,
+//               roomDetails: {
+//                 ...room.toObject(),
+//                 // isMember: room.members.includes(senderId),
+//                 messages: messagesCopy,
+//                 isMember: room.members.some((m) => m.id == senderId),
+//               },
+//             };
+//             io.to(user.socketId).emit("room_details", joinMessage);
+//             // io.to(roomId).emit("room_details", joinMessage);
+//           } else if (room.isPublic) {
+//             room.members.push(senderId);
+//             await room.save();
+//             // socket.join(roomId);
+//             const joinMessage = {
+//               info: `${
+//                 user.firstname ? user.firstname : user.username
+//               } joined`,
+//               roomDetails: {
+//                 ...room.toObject(),
+//                 // isMember: room.members.includes(senderId),
+//                 messages: messagesCopy,
+//                 isMember: room.members.some((m) => m.id == senderId),
+//               },
+//             };
+//             io.to(user.socketId).emit("room_details", joinMessage);
+//             // io.to(roomId).emit("room_details", joinMessage);
+//           }
+//         }
+//       } else if (isJoin == false) {
+//         if (room && user) {
+//           room.members = room.members.filter((m) => m != senderId);
+//           await room.save();
+//           socket.leave(roomId);
+//           const leaveMessage = {
+//             info: `${user.firstname ? user.firstname : user.username} left`,
+//             roomDetails: {
+//               ...room.toObject(),
+//               // isMember: room.members.includes(senderId),
+//               messages: messagesCopy,
+//               isMember: room.members.some((m) => m.id == senderId),
+//             },
+//           };
+//           io.to(user.socketId).emit("room_details", leaveMessage);
+//           // io.to(roomId).emit("room_details", leaveMessage);
+//         } else {
+//           cb && cb({ error: "Whether room or user not found !" });
+//         }
+//       }
+//     } else {
+//       cb && cb({ error: "Room not found !" });
+//     }
+//   } catch (err) {
+//     console.error(`Error handling room_details:`, err);
+//     cb && cb({ error: "Failed to handle room_details" });
+//   }
+// });
+
+// socket.on("leave_room", async (data, cb) => {
+//   const { senderId, roomId } = data;
+//   try {
+//     const room = await RoomModel.findById(roomId);
+//     const user = await UserModel.findById(senderId);
+
+//     if (room && user) {
+//       room.members = room.members.filter((m) => {
+//         return m != senderId;
+//       });
+//       await room.save();
+//       socket.leave(roomId);
+//       io.to(roomId).emit("room_chat_messages", {
+//         info: `${user.firstname ? user.firstname : user.username} left`,
+//         roomDetails: {
+//           ...room,
+//           isMember: room.members.includes(senderId),
+//         },
+//       });
+//     } else {
+//       cb && cb({ error: "Whether room or user not found !" });
+//     }
+//   } catch (err) {
+//     console.error(`Error handling join_room:`, err);
+//     cb && cb({ error: "Failed to handle join_room" });
+//   }
+// });
+
+// socket.on("private_message", async (data, cb) => {
+//   console.log("private_message event received:", data);
+//   const { senderId, receiverId, message } = data;
+//   try {
+//     if (message.trim() === "") {
+//       cb({ error: "Content required !" });
+//     }
+//     const user = await UserModel.findById(senderId);
+
+//     user.socketId = socket.id;
+
+//     await user.save();
+
+//     const receiver = await UserModel.findById(receiverId);
+
+//     if (receiver) {
+//       const newMessage = new MessageModel({
+//         sender: senderId,
+//         receiver: receiver._id,
+//         content: message,
+//         date: moment().format("YYYY-MM-DD HH:mm"),
+//       });
+//       await newMessage.save();
+
+//       // socket.to(receiver.socketId).emit("receive_message", {
+//       //   ...newMessage.toObject(),
+//       //   date: newMessage.date.split(" ")[1],
+//       // });
+
+//       // io.emit("private_message", {
+//       //   ...newMessage.toObject(),
+//       //   date: newMessage.date.split(" ")[1],
+//       //   isCurrentUser: newMessage.sender.toString() === senderId.toString(),
+//       // });
+
+//       // socket.emit("private_message", {
+//       //   ...newMessage.toObject(),
+//       //   date: newMessage.date.split(" ")[1],
+//       //   isCurrentUser: true,
+//       // });
+
+//       if (receiver.socketId) {
+//         socket.to(receiver.socketId).emit("private_message", {
+//           ...newMessage.toObject(),
+//           date: newMessage.date.split(" ")[1],
+//           isCurrentUser: false,
+//         });
+//       }
+
+//       // if (typeof cb === "function") {
+//       //   cb({
+//       //     ...newMessage.toObject(),
+//       //     date: newMessage.date.split(" ")[1],
+//       //     isCurrentUser: true,
+//       //   });
+//       // }
+
+//       // if (receiver.socketId) {
+//       //   io.to(receiver.socketId).emit("private_message", {
+//       //     senderId,
+//       //     receiverId: receiver._id,
+//       //     content: message,
+//       //     date: newMessage.date.split(" ")[1],
+//       //   });
+//       //   newMessage.delivered = true;
+//       //   await newMessage.save();
+//       // }
+//     }
+//   } catch (err) {
+//     console.error("Error handling private_message:", err);
+//     if (typeof cb === "function") {
+//       cb && cb({ error: "Failed to handle private_message" });
+//     }
+//   }
+// });

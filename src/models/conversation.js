@@ -2,12 +2,15 @@ const { Schema, model } = require("mongoose");
 
 const conversationSchema = new Schema(
   {
-    participants: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "user",
-      },
-    ],
+    participants: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "user",
+        },
+      ],
+      default: []
+    },
     room: {
       type: Schema.Types.ObjectId,
       ref: "room",
