@@ -149,7 +149,7 @@ module.exports = (io, app) => {
 
         // Find or create a conversation between the two users
         let conversation = await ConversationModel.findOne({
-          participants: { $in: [senderId, receiverId] },
+          participants: { $all: [senderId, receiverId] },
           room: null,
         });
         // Create new message object
@@ -166,11 +166,16 @@ module.exports = (io, app) => {
 
         if (conversation) {
           // Add the new message to the conversation
-          conversation.messages.push(newMessage.id);
+          conversation.messages.push(newMessage._id);
           await conversation.save();
 
+          // Check if the socket has already joined the conversation
+          if (!socket.rooms.has(conversation._id.toString())) {
+            socket.join(conversation._id.toString());
+          }
+
           // Emit the message to the room
-          io.to(conversation.id.toString()).emit("private_message", {
+          io.to(conversation._id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
@@ -178,17 +183,20 @@ module.exports = (io, app) => {
           // Create a new conversation if one doesn't exist
           conversation = new ConversationModel({
             participants: [senderId, receiverId],
-            messages: [newMessage.id],
+            messages: [newMessage._id],
             room: null,
           });
           await conversation.save();
 
+          socket.join(conversation._id.toString());
+
           // Emit the message to the new room
-          io.to(conversation.id.toString()).emit("private_message", {
+          io.to(conversation._id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
         }
+        console.log(socket.rooms, "- socket rooms on private_message");
 
         // Optionally call the callback to acknowledge message reception
         // if (cb) cb({ success: true });
@@ -261,7 +269,7 @@ module.exports = (io, app) => {
           //   // isCurrentUser: false,
           // });
 
-          io.to(conversation.id).emit("room_chat_messages", {
+          io.to(conversation.id.toString()).emit("room_chat_messages", {
             ...populatedMessage.toObject(),
             date: populatedMessage.date.split(" ")[1],
             // sender: senderId,
@@ -355,7 +363,7 @@ module.exports = (io, app) => {
             ) {
               throw new Error(`Matching password required !`);
             } else {
-              socket.join(conversationPlain._id);
+              socket.join(conversationPlain._id.toString());
               conversation.participants.push(user._id);
               room.members.push(user._id);
               await conversation.save();
@@ -388,7 +396,7 @@ module.exports = (io, app) => {
               };
             }
             if (isJoin == false) {
-              socket.leave(conversationPlain._id);
+              socket.leave(conversationPlain._id.toString());
               room.members.pull(senderId);
               conversation.participants.pull(senderId);
               await room.save();
@@ -417,7 +425,7 @@ module.exports = (io, app) => {
               };
             }
             if (isJoin == false) {
-              socket.leave(conversationPlain._id);
+              socket.leave(conversationPlain._id.toString());
               room.members.pull(senderId);
               conversation.participants.pull(senderId);
               await room.save();
@@ -439,11 +447,11 @@ module.exports = (io, app) => {
         }
 
         if ("isJoin" in data && isJoin == true) {
-          io.to(conversationPlain._id).emit("room_details", {
+          io.to(conversationPlain._id.toString()).emit("room_details", {
             info: `${user.firstname ? user.firstname : user.username}'s joined`,
           });
         } else if ("isJoin" in data && isJoin == false) {
-          io.to(conversationPlain._id).emit("room_details", {
+          io.to(conversationPlain._id.toString()).emit("room_details", {
             info: `${user.firstname ? user.firstname : user.username}'s left`,
           });
         }
@@ -481,24 +489,24 @@ module.exports = (io, app) => {
           .populate("participants", "firstname username img");
 
         if (!conversation) {
-          return res.status(404).json({ msg: "Conversation not found!" });
+          return res.status(200).json([]);
         }
 
         messages = conversation.messages;
-        conversationId = conversation.id;
+        conversationId = conversation._id;
       } else if (senderId && receiverId) {
         // one-to-one conversation logic
         const conversation = await ConversationModel.findOne({
-          participants: { $in: [senderId, receiverId] },
+          participants: { $all: [senderId, receiverId] },
           room: null,
         }).populate("messages");
 
         if (!conversation) {
-          return res.status(404).json({ msg: "Conversation not found!" });
+          return res.status(200).json([]);
         }
 
         messages = conversation.messages;
-        conversationId = conversation.id;
+        conversationId = conversation._id;
       }
 
       const annotatedMessages = messages.map((message) => ({
@@ -509,11 +517,11 @@ module.exports = (io, app) => {
       // console.log(userSocket.id, "- userSockettttttttt before join");
       // console.log(userSocket.rooms, "- userSocket rooomsss before join");
       if (conversationId) {
-        userSocket.join(conversationId);
-        // console.log(
-        //   userSocket.rooms,
-        //   "- usersocket's rooms after joining !!!!!!!"
-        // );
+        userSocket.join(conversationId.toString());
+        console.log(
+          userSocket.rooms,
+          "- usersocket's rooms after joining !!!!!!!"
+        );
         // console.log(`${userSocket.id} - Joined room: ${conversationId}`);
       } else {
         console.warn("No conversation ID found for joining");
@@ -540,7 +548,7 @@ module.exports = (io, app) => {
       // } else {
       //   console.warn("No conversation ID found for joining");
       // }
-
+      console.log(userSocket.rooms, "- socket rooms on getchatmessages api");
       return res.status(200).json(annotatedMessages);
     } catch (err) {
       next(err);
@@ -588,9 +596,9 @@ module.exports = (io, app) => {
       const conversationPlain = conversation.toObject();
 
       if (!user || !conversation || !room) {
-        return res
-          .status(404)
-          .json({ msg: `Whether user or conversation or room credentials not found !` });
+        return res.status(404).json({
+          msg: `Whether user or conversation or room credentials not found !`,
+        });
       }
 
       const amIMember = conversationPlain.participants.some(
@@ -633,10 +641,10 @@ module.exports = (io, app) => {
             roomPassword != conversationPlain.room.password
           ) {
             return res
-            .status(400)
-            .json({ msg: `Matching password required !` });
+              .status(400)
+              .json({ msg: `Matching password required !` });
           } else {
-            userSocket.join(conversationPlain._id);
+            userSocket.join(conversationPlain._id.toString());
             conversation.participants.push(user._id);
             room.members.push(user._id);
             await conversation.save();
@@ -650,9 +658,9 @@ module.exports = (io, app) => {
             };
           }
         } else if (isJoin == false) {
-          return res
-          .status(400)
-          .json({ msg: `Invalid command. The command you attempted is not recognized or supported by the server.` });
+          return res.status(400).json({
+            msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+          });
         }
       } else {
         if (!room.isPublic) {
@@ -666,7 +674,7 @@ module.exports = (io, app) => {
             };
           }
           if (isJoin == false) {
-            userSocket.leave(conversationPlain._id);
+            userSocket.leave(conversationPlain._id.toString());
             room.members.pull(senderId);
             conversation.participants.pull(senderId);
             await room.save();
@@ -679,9 +687,9 @@ module.exports = (io, app) => {
               },
             };
           } else if (isJoin == true) {
-            return res
-            .status(400)
-            .json({ msg: `Invalid command. The command you attempted is not recognized or supported by the server.` });
+            return res.status(400).json({
+              msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+            });
           }
         } else {
           if (!("isJoin" in req.body)) {
@@ -694,7 +702,7 @@ module.exports = (io, app) => {
             };
           }
           if (isJoin == false) {
-            userSocket.leave(conversationPlain._id);
+            userSocket.leave(conversationPlain._id.toString());
             room.members.pull(senderId);
             conversation.participants.pull(senderId);
             await room.save();
@@ -707,19 +715,19 @@ module.exports = (io, app) => {
               },
             };
           } else if (isJoin == true) {
-            return res
-            .status(400)
-            .json({ msg: `Invalid command. The command you attempted is not recognized or supported by the server.` });
+            return res.status(400).json({
+              msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+            });
           }
         }
       }
 
       if ("isJoin" in req.body && isJoin == true) {
-        io.to(conversationPlain._id).emit("room_chat_messages", {
+        io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
           info: `${user.firstname ? user.firstname : user.username}'s joined`,
         });
       } else if ("isJoin" in req.body && isJoin == false) {
-        io.to(conversationPlain._id).emit("room_chat_messages", {
+        io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
           info: `${user.firstname ? user.firstname : user.username}'s left`,
         });
       }
