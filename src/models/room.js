@@ -33,15 +33,15 @@ const roomSchema = new Schema(
       ],
       default: [],
     },
-    messages: {
-      type: [
-        {
-          type: Schema.Types.ObjectId,
-          ref: "message",
-        },
-      ],
-      default: [],
-    },
+    // messages: {
+    //   type: [
+    //     {
+    //       type: Schema.Types.ObjectId,
+    //       ref: "message",
+    //     },
+    //   ],
+    //   default: [],
+    // },
     isPublic: {
       type: Boolean,
       default: true,
