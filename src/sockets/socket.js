@@ -649,7 +649,7 @@ module.exports = (io, app) => {
   });
 
   app.post("/api/messages/getchatmessages", async (req, res, next) => {
-    const { senderId, receiverId, roomId, socketId } = req.query;
+    const { senderId, receiverId, roomId, socketId } = req.body;
     try {
       let messages = [];
       let conversationId;
