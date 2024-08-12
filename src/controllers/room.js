@@ -70,14 +70,19 @@ async function getAll(req, res, next) {
         const isPartOfRoom = room.members.some((r) => r.id == userId);
 
         if (isPartOfRoom) {
-          desiredResponse.myRooms.push(room);
+          desiredResponse.myRooms.push({ room: { ...room.toObject() } });
         } else {
-          desiredResponse.result.push(room);
+          desiredResponse.result.push({ room: { ...room.toObject() } });
         }
       }
     } else {
       delete desiredResponse.myRooms;
-      desiredResponse.result.push(...populatedRooms);
+      console.log(populatedRooms);
+
+      const a = populatedRooms.map((r) => {
+        return { room: { ...r.toObject() } };
+      });
+      desiredResponse.result.push(...a);
     }
 
     return res.status(200).json(desiredResponse);

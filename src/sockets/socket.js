@@ -169,13 +169,10 @@ module.exports = (io, app) => {
           conversation.messages.push(newMessage._id);
           await conversation.save();
 
-          // Check if the socket has already joined the conversation
-          if (!socket.rooms.has(conversation._id.toString())) {
-            socket.join(conversation._id.toString());
-          }
+          socket.join(conversation._id);
 
           // Emit the message to the room
-          io.to(conversation._id.toString()).emit("private_message", {
+          io.to(conversation._id).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
@@ -188,10 +185,10 @@ module.exports = (io, app) => {
           });
           await conversation.save();
 
-          socket.join(conversation._id.toString());
+          socket.join(conversation._id);
 
           // Emit the message to the new room
-          io.to(conversation._id.toString()).emit("private_message", {
+          io.to(conversation._id).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
@@ -269,7 +266,7 @@ module.exports = (io, app) => {
           //   // isCurrentUser: false,
           // });
 
-          io.to(conversation.id.toString()).emit("room_chat_messages", {
+          io.to(conversation._id.toString()).emit("room_chat_messages", {
             ...populatedMessage.toObject(),
             date: populatedMessage.date.split(" ")[1],
             // sender: senderId,
@@ -282,6 +279,186 @@ module.exports = (io, app) => {
         cb && cb({ error: "Failed to handle room_chat_messages" });
       }
     });
+
+    // socket.on("room_details", async (data, cb) => {
+    //   const { senderId, roomId, roomPassword, isJoin } = data;
+    //   try {
+    //     if (!senderId || !roomId) {
+    //       throw new Error(`User and room identifiers required ! `);
+    //     }
+    //     const user = await UserModel.findById(senderId);
+    //     const room = await RoomModel.findById(roomId);
+    //     const conversation = await ConversationModel.findOne({ room: roomId })
+    //       .populate({
+    //         path: "participants",
+    //         select: "firstname username img updatedAt",
+    //       })
+    //       .populate({
+    //         path: "messages",
+    //         populate: {
+    //           path: "sender",
+    //           model: "user",
+    //           select: "firstname username img updatedAt",
+    //         },
+    //         select: "-room",
+    //       })
+    //       .populate({
+    //         path: "room",
+    //         populate: {
+    //           path: "members",
+    //           model: "user",
+    //           select: "firstname username img updatedAt",
+    //         },
+    //         select: "-messages",
+    //       });
+    //     const conversationPlain = conversation.toObject();
+
+    //     if (!user || !conversation || !room) {
+    //       throw new Error(
+    //         `Whether user or conversation or room credentials not found ! `
+    //       );
+    //     }
+
+    //     const amIMember = conversationPlain.participants.some(
+    //       (p) => p._id == senderId
+    //     );
+
+    //     let messagesCopy = [];
+    //     let payload = {};
+
+    //     if (conversationPlain?.messages.length !== 0) {
+    //       for (const message of conversationPlain.messages) {
+    //         const messageObj = message.toObject ? message.toObject() : message;
+
+    //         messageObj.date = messageObj.date.split(" ")[1];
+    //         messagesCopy.push(messageObj);
+    //       }
+    //     }
+
+    //     if (!amIMember) {
+    //       if (!room?.isPublic) {
+    //         payload = {
+    //           roomDetails: {
+    //             ...conversationPlain,
+    //             messages: [],
+    //             isMember: amIMember,
+    //           },
+    //         };
+    //       } else if (room?.isPublic && !("isJoin" in data)) {
+    //         payload = {
+    //           roomDetails: {
+    //             ...conversationPlain,
+    //             messages: messagesCopy,
+    //             isMember: amIMember,
+    //           },
+    //         };
+    //       }
+    //       if (isJoin == true) {
+    //         if (
+    //           !roomPassword ||
+    //           roomPassword != conversationPlain.room.password
+    //         ) {
+    //           throw new Error(`Matching password required !`);
+    //         } else {
+    //           socket.join(conversationPlain._id.toString());
+    //           conversation.participants.push(user._id);
+    //           room.members.push(user._id);
+    //           await conversation.save();
+    //           await room.save();
+    //           payload = {
+    //             roomDetails: {
+    //               ...conversationPlain,
+    //               messages: messagesCopy,
+    //               isMember: true,
+    //             },
+    //             // info: `${
+    //             //   user.firstname ? user.firstname : user.username
+    //             // }'s joined`,
+    //           };
+    //         }
+    //       } else if (isJoin == false) {
+    //         throw new Error(
+    //           `Invalid command. The command you attempted is not recognized or supported by the server.`
+    //         );
+    //       }
+    //     } else {
+    //       if (!room.isPublic) {
+    //         if (!("isJoin" in data)) {
+    //           payload = {
+    //             roomDetails: {
+    //               ...conversationPlain,
+    //               messages: messagesCopy,
+    //               isMember: true,
+    //             },
+    //           };
+    //         }
+    //         if (isJoin == false) {
+    //           socket.leave(conversationPlain._id.toString());
+    //           room.members.pull(senderId);
+    //           conversation.participants.pull(senderId);
+    //           await room.save();
+    //           await conversation.save();
+    //           payload = {
+    //             roomDetails: {
+    //               ...conversationPlain,
+    //               messages: [],
+    //               isMember: false,
+    //             },
+    //             // info: `${user.firstname ? user.firstname : user.username}'s left`,
+    //           };
+    //         } else if (isJoin == true) {
+    //           throw new Error(
+    //             `Invalid command. The command you attempted is not recognized or supported by the server.`
+    //           );
+    //         }
+    //       } else {
+    //         if (!("isJoin" in data)) {
+    //           payload = {
+    //             roomDetails: {
+    //               ...conversationPlain,
+    //               messages: messagesCopy,
+    //               isMember: amIMember,
+    //             },
+    //           };
+    //         }
+    //         if (isJoin == false) {
+    //           socket.leave(conversationPlain._id.toString());
+    //           room.members.pull(senderId);
+    //           conversation.participants.pull(senderId);
+    //           await room.save();
+    //           await conversation.save();
+    //           payload = {
+    //             roomDetails: {
+    //               ...conversationPlain,
+    //               messages: messagesCopy,
+    //               isMember: false,
+    //             },
+    //             // info: `${user.firstname ? user.firstname : user.username}'s left`,
+    //           };
+    //         } else if (isJoin == true) {
+    //           throw new Error(
+    //             `Invalid command. The command you attempted is not recognized or supported by the server.`
+    //           );
+    //         }
+    //       }
+    //     }
+
+    //     if ("isJoin" in data && isJoin == true) {
+    //       io.to(conversationPlain._id.toString()).emit("room_details", {
+    //         info: `${user.firstname ? user.firstname : user.username}'s joined`,
+    //       });
+    //     } else if ("isJoin" in data && isJoin == false) {
+    //       io.to(conversationPlain._id.toString()).emit("room_details", {
+    //         info: `${user.firstname ? user.firstname : user.username}'s left`,
+    //       });
+    //     }
+
+    //     io.to(socket.id).emit("room_details", payload);
+    //   } catch (err) {
+    //     console.error(`Error handling room_details:`, err);
+    //     cb && cb({ error: err });
+    //   }
+    // });
 
     socket.on("room_details", async (data, cb) => {
       const { senderId, roomId, roomPassword, isJoin } = data;
@@ -455,6 +632,7 @@ module.exports = (io, app) => {
             info: `${user.firstname ? user.firstname : user.username}'s left`,
           });
         }
+        // console.log(socket.rooms, "- roomsssssssss");
 
         io.to(socket.id).emit("room_details", payload);
       } catch (err) {
@@ -517,7 +695,7 @@ module.exports = (io, app) => {
       // console.log(userSocket.id, "- userSockettttttttt before join");
       // console.log(userSocket.rooms, "- userSocket rooomsss before join");
       if (conversationId) {
-        userSocket.join(conversationId.toString());
+        userSocket.join(conversationId);
         console.log(
           userSocket.rooms,
           "- usersocket's rooms after joining !!!!!!!"
@@ -722,15 +900,15 @@ module.exports = (io, app) => {
         }
       }
 
-      if ("isJoin" in req.body && isJoin == true) {
-        io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
-          info: `${user.firstname ? user.firstname : user.username}'s joined`,
-        });
-      } else if ("isJoin" in req.body && isJoin == false) {
-        io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
-          info: `${user.firstname ? user.firstname : user.username}'s left`,
-        });
-      }
+      // if ("isJoin" in req.body && isJoin == true) {
+      //   io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
+      //     info: `${user.firstname ? user.firstname : user.username}'s joined`,
+      //   });
+      // } else if ("isJoin" in req.body && isJoin == false) {
+      //   io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
+      //     info: `${user.firstname ? user.firstname : user.username}'s left`,
+      //   });
+      // }
 
       // io.to(userSocket.id).emit("room_details", payload);
 
