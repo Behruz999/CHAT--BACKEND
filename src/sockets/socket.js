@@ -15,10 +15,10 @@ module.exports = (io, app) => {
           { _id: userIdentifier },
           { socketId: newSocketId }
         );
-        console.log(
-          `${socket.id} - server socket`,
-          `${newSocketId} - newSocketId from client`
-        );
+        // console.log(
+        //   `${socket.id} - server socket`,
+        //   `${newSocketId} - newSocketId from client`
+        // );
 
         // Update the socketMap
         socketMap.delete(socket.id);
@@ -29,7 +29,7 @@ module.exports = (io, app) => {
       }
     });
 
-    socketMap.set(socket.id, socket);
+    // socketMap.set(socket.id, socket);
 
     socket.on("communicated_people", async (data) => {
       const { userId } = data;
@@ -130,6 +130,15 @@ module.exports = (io, app) => {
       console.log("private_message event received:", data);
       const { senderId, receiverId, message, replyToMessageId } = data;
 
+      if (
+        senderId.trim() === "" ||
+        !senderId ||
+        receiverId.trim() === "" ||
+        !receiverId
+      ) {
+        return cb({ error: "Sender or receiver identifiers required !" });
+      }
+
       // Trim message content to avoid sending empty messages
       if (message.trim() === "") {
         return cb({ error: "Content required!" });
@@ -169,10 +178,14 @@ module.exports = (io, app) => {
           conversation.messages.push(newMessage._id);
           await conversation.save();
 
-          socket.join(conversation._id);
+          // Check if the socket is already in the room
+          if (!socket.rooms.has(conversation._id.toString())) {
+            // Add the socket to the room
+            socket.join(conversation._id.toString());
+          }
 
           // Emit the message to the room
-          io.to(conversation._id).emit("private_message", {
+          io.to(conversation._id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
@@ -185,10 +198,14 @@ module.exports = (io, app) => {
           });
           await conversation.save();
 
-          socket.join(conversation._id);
+          // Check if the socket is already in the room
+          if (!socket.rooms.has(conversation._id.toString())) {
+            // Add the socket to the room
+            socket.join(conversation._id.toString());
+          }
 
           // Emit the message to the new room
-          io.to(conversation._id).emit("private_message", {
+          io.to(conversation._id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
           });
@@ -203,82 +220,82 @@ module.exports = (io, app) => {
       }
     });
 
-    socket.on("room_chat_messages", async (data, cb) => {
-      console.log(data, "- data on room_chat_messages");
-      const { senderId, roomId, message, replyToMessageId } = data;
-      try {
-        if (message.trim() === "") {
-          cb({ error: `Content required !` });
-        }
+    // socket.on("room_chat_messages", async (data, cb) => {
+    //   console.log(data, "- data on room_chat_messages");
+    //   const { senderId, roomId, message, replyToMessageId } = data;
+    //   try {
+    //     if (message.trim() === "") {
+    //       cb({ error: `Content required !` });
+    //     }
 
-        const room = await RoomModel.findById(roomId);
-        let populatedMessage;
+    //     const room = await RoomModel.findById(roomId);
+    //     let populatedMessage;
 
-        if (room) {
-          const newMessage = new MessageModel({
-            sender: senderId,
-            room: roomId,
-            content: message,
-            replyTo: replyToMessageId && replyToMessageId,
-            date: moment().format("YYYY-MM-DD HH:mm"),
-          });
+    //     if (room) {
+    //       const newMessage = new MessageModel({
+    //         sender: senderId,
+    //         room: roomId,
+    //         content: message,
+    //         replyTo: replyToMessageId && replyToMessageId,
+    //         date: moment().format("YYYY-MM-DD HH:mm"),
+    //       });
 
-          await newMessage.save();
+    //       await newMessage.save();
 
-          let conversation = await ConversationModel.findOne({
-            room: roomId,
-          });
+    //       let conversation = await ConversationModel.findOne({
+    //         room: roomId,
+    //       });
 
-          if (!conversation) {
-            conversation = new ConversationModel({
-              participants: [senderId],
-              room: roomId,
-              messages: [newMessage.id],
-            });
-            await conversation.save();
-          } else {
-            conversation.messages.push(newMessage.id);
-            await conversation.save();
-          }
+    //       if (!conversation) {
+    //         conversation = new ConversationModel({
+    //           participants: [senderId],
+    //           room: roomId,
+    //           messages: [newMessage.id],
+    //         });
+    //         await conversation.save();
+    //       } else {
+    //         conversation.messages.push(newMessage.id);
+    //         await conversation.save();
+    //       }
 
-          populatedMessage = await MessageModel.populate(newMessage, [
-            {
-              path: "replyTo",
-              select: "content delivered updatedAt createdAt",
-            },
-            {
-              path: "sender",
-              select: "firstname username img",
-            },
-          ]);
+    //       populatedMessage = await MessageModel.populate(newMessage, [
+    //         {
+    //           path: "replyTo",
+    //           select: "content delivered updatedAt createdAt",
+    //         },
+    //         {
+    //           path: "sender",
+    //           select: "firstname username img",
+    //         },
+    //       ]);
 
-          // io.emit("room_chat_messages", {
-          //   ...newMessage,
-          //   date: newMessage.date.split(" ")[1],
-          //   isCurrentUser: true,
-          // });
+    //       // io.emit("room_chat_messages", {
+    //       //   ...newMessage,
+    //       //   date: newMessage.date.split(" ")[1],
+    //       //   isCurrentUser: true,
+    //       // });
 
-          // Notify all users in the room about the new message
+    //       // Notify all users in the room about the new message
 
-          // io.to(roomId).emit("room_chat_messages", {
-          //   ...newMessage.toObject(),
-          //   date: newMessage.date.split(" ")[1],
-          //   // isCurrentUser: false,
-          // });
+    //       // io.to(roomId).emit("room_chat_messages", {
+    //       //   ...newMessage.toObject(),
+    //       //   date: newMessage.date.split(" ")[1],
+    //       //   // isCurrentUser: false,
+    //       // });
 
-          io.to(conversation._id.toString()).emit("room_chat_messages", {
-            ...populatedMessage.toObject(),
-            date: populatedMessage.date.split(" ")[1],
-            // sender: senderId,
-          });
-        } else {
-          cb && cb({ error: "Room not found !" });
-        }
-      } catch (err) {
-        console.error(`Error handling room_chat_messages:`, err);
-        cb && cb({ error: "Failed to handle room_chat_messages" });
-      }
-    });
+    //       io.to(conversation._id.toString()).emit("room_chat_messages", {
+    //         ...populatedMessage.toObject(),
+    //         date: populatedMessage.date.split(" ")[1],
+    //         // sender: senderId,
+    //       });
+    //     } else {
+    //       cb && cb({ error: "Room not found !" });
+    //     }
+    //   } catch (err) {
+    //     console.error(`Error handling room_chat_messages:`, err);
+    //     cb && cb({ error: "Failed to handle room_chat_messages" });
+    //   }
+    // });
 
     // socket.on("room_details", async (data, cb) => {
     //   const { senderId, roomId, roomPassword, isJoin } = data;
@@ -459,6 +476,83 @@ module.exports = (io, app) => {
     //     cb && cb({ error: err });
     //   }
     // });
+
+    socket.on("room_chat_messages", async (data, cb) => {
+      console.log(data, "- data on room_chat_messages");
+      const { senderId, roomId, message, replyToMessageId } = data;
+      try {
+        if (message.trim() === "") {
+          cb({ error: `Content required !` });
+        }
+
+        const room = await RoomModel.findById(roomId);
+        let populatedMessage;
+
+        if (room) {
+          const newMessage = new MessageModel({
+            sender: senderId,
+            room: roomId,
+            content: message,
+            replyTo: replyToMessageId && replyToMessageId,
+            date: moment().format("YYYY-MM-DD HH:mm"),
+          });
+
+          await newMessage.save();
+
+          let conversation = await ConversationModel.findOne({
+            room: roomId,
+          });
+
+          if (!conversation) {
+            conversation = new ConversationModel({
+              participants: [senderId],
+              room: roomId,
+              messages: [newMessage._id],
+            });
+            await conversation.save();
+          } else {
+            conversation.messages.push(newMessage._id);
+            await conversation.save();
+          }
+
+          populatedMessage = await MessageModel.populate(newMessage, [
+            {
+              path: "replyTo",
+              select: "content delivered updatedAt createdAt",
+            },
+            {
+              path: "sender",
+              select: "firstname username img",
+            },
+          ]);
+
+          // io.emit("room_chat_messages", {
+          //   ...newMessage,
+          //   date: newMessage.date.split(" ")[1],
+          //   isCurrentUser: true,
+          // });
+
+          // Notify all users in the room about the new message
+
+          // io.to(roomId).emit("room_chat_messages", {
+          //   ...newMessage.toObject(),
+          //   date: newMessage.date.split(" ")[1],
+          //   // isCurrentUser: false,
+          // });
+
+          io.to(conversation._id.toString()).emit("room_chat_messages", {
+            ...populatedMessage.toObject(),
+            date: populatedMessage.date.split(" ")[1],
+            // sender: senderId,
+          });
+        } else {
+          cb && cb({ error: "Room not found !" });
+        }
+      } catch (err) {
+        console.error(`Error handling room_chat_messages:`, err);
+        cb && cb({ error: "Failed to handle room_chat_messages" });
+      }
+    });
 
     socket.on("room_details", async (data, cb) => {
       const { senderId, roomId, roomPassword, isJoin } = data;
@@ -671,7 +765,7 @@ module.exports = (io, app) => {
         }
 
         messages = conversation.messages;
-        conversationId = conversation._id;
+        conversationId = conversation._id.toString();
       } else if (senderId && receiverId) {
         // one-to-one conversation logic
         const conversation = await ConversationModel.findOne({
@@ -684,7 +778,7 @@ module.exports = (io, app) => {
         }
 
         messages = conversation.messages;
-        conversationId = conversation._id;
+        conversationId = conversation._id.toString();
       }
 
       const annotatedMessages = messages.map((message) => ({
@@ -695,6 +789,8 @@ module.exports = (io, app) => {
       // console.log(userSocket.id, "- userSockettttttttt before join");
       // console.log(userSocket.rooms, "- userSocket rooomsss before join");
       if (conversationId) {
+        console.log(typeof conversationId, "- ocnv");
+
         userSocket.join(conversationId);
         console.log(
           userSocket.rooms,
@@ -733,10 +829,195 @@ module.exports = (io, app) => {
     }
   });
 
+  //   const { senderId, roomId, roomPassword, isJoin, socketId } = req.body;
+  //   try {
+  //     const userSocket = socketMap.get(socketId);
+
+  //     if (!userSocket) {
+  //       return res.status(400).json({ msg: "Socket not found !" });
+  //     }
+  //     if (!senderId || !roomId) {
+  //       return res
+  //         .status(400)
+  //         .json({ msg: `User and room identifiers required ! ` });
+  //     }
+  //     const user = await UserModel.findById(senderId);
+  //     const room = await RoomModel.findById(roomId);
+  //     const conversation = await ConversationModel.findOne({ room: roomId })
+  //       .populate({
+  //         path: "participants",
+  //         select: "firstname username img updatedAt",
+  //       })
+  //       .populate({
+  //         path: "messages",
+  //         populate: {
+  //           path: "sender",
+  //           model: "user",
+  //           select: "firstname username img updatedAt",
+  //         },
+  //         select: "-room",
+  //       })
+  //       .populate({
+  //         path: "room",
+  //         populate: {
+  //           path: "members",
+  //           model: "user",
+  //           select: "firstname username img updatedAt",
+  //         },
+  //         select: "-messages",
+  //       });
+  //     const conversationPlain = conversation.toObject();
+
+  //     if (!user || !conversation || !room) {
+  //       return res.status(404).json({
+  //         msg: `Whether user or conversation or room credentials not found !`,
+  //       });
+  //     }
+
+  //     const amIMember = conversationPlain.participants.some(
+  //       (p) => p._id == senderId
+  //     );
+
+  //     let messagesCopy = [];
+  //     let payload = {};
+
+  //     if (conversationPlain?.messages.length !== 0) {
+  //       for (const message of conversationPlain.messages) {
+  //         const messageObj = message.toObject ? message.toObject() : message;
+
+  //         messageObj.date = messageObj.date.split(" ")[1];
+  //         messagesCopy.push(messageObj);
+  //       }
+  //     }
+
+  //     if (!amIMember) {
+  //       if (!room?.isPublic) {
+  //         payload = {
+  //           roomDetails: {
+  //             ...conversationPlain,
+  //             messages: [],
+  //             isMember: amIMember,
+  //           },
+  //         };
+  //       } else if (room?.isPublic && !("isJoin" in req.body)) {
+  //         payload = {
+  //           roomDetails: {
+  //             ...conversationPlain,
+  //             messages: messagesCopy,
+  //             isMember: amIMember,
+  //           },
+  //         };
+  //       }
+  //       if (isJoin == true) {
+  //         if (
+  //           !roomPassword ||
+  //           roomPassword != conversationPlain.room.password
+  //         ) {
+  //           return res
+  //             .status(400)
+  //             .json({ msg: `Matching password required !` });
+  //         } else {
+  //           userSocket.join(conversation._id.toString());
+  //           conversation.participants.push(user._id);
+  //           room.members.push(user._id);
+  //           await conversation.save();
+  //           await room.save();
+  //           payload = {
+  //             roomDetails: {
+  //               ...conversationPlain,
+  //               messages: messagesCopy,
+  //               isMember: true,
+  //             },
+  //           };
+  //         }
+  //       } else if (isJoin == false) {
+  //         return res.status(400).json({
+  //           msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+  //         });
+  //       }
+  //     } else {
+  //       if (!room.isPublic) {
+  //         if (!("isJoin" in req.body)) {
+  //           payload = {
+  //             roomDetails: {
+  //               ...conversationPlain,
+  //               messages: messagesCopy,
+  //               isMember: true,
+  //             },
+  //           };
+  //         }
+  //         if (isJoin == false) {
+  //           userSocket.leave(conversation._id.toString());
+  //           room.members.pull(senderId);
+  //           conversation.participants.pull(senderId);
+  //           await room.save();
+  //           await conversation.save();
+  //           payload = {
+  //             roomDetails: {
+  //               ...conversationPlain,
+  //               messages: [],
+  //               isMember: false,
+  //             },
+  //           };
+  //         } else if (isJoin == true) {
+  //           return res.status(400).json({
+  //             msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+  //           });
+  //         }
+  //       } else {
+  //         if (!("isJoin" in req.body)) {
+  //           payload = {
+  //             roomDetails: {
+  //               ...conversationPlain,
+  //               messages: messagesCopy,
+  //               isMember: amIMember,
+  //             },
+  //           };
+  //         }
+  //         if (isJoin == false) {
+  //           userSocket.leave(conversation._id.toString());
+  //           room.members.pull(senderId);
+  //           conversation.participants.pull(senderId);
+  //           await room.save();
+  //           await conversation.save();
+  //           payload = {
+  //             roomDetails: {
+  //               ...conversationPlain,
+  //               messages: messagesCopy,
+  //               isMember: false,
+  //             },
+  //           };
+  //         } else if (isJoin == true) {
+  //           return res.status(400).json({
+  //             msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+  //           });
+  //         }
+  //       }
+  //     }
+
+  //     // if ("isJoin" in req.body && isJoin == true) {
+  //     //   io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
+  //     //     info: `${user.firstname ? user.firstname : user.username}'s joined`,
+  //     //   });
+  //     // } else if ("isJoin" in req.body && isJoin == false) {
+  //     //   io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
+  //     //     info: `${user.firstname ? user.firstname : user.username}'s left`,
+  //     //   });
+  //     // }
+
+  //     // io.to(userSocket.id).emit("room_details", payload);
+
+  //     return res.status(200).json(payload);
+  //   } catch (err) {
+  //     next(err);
+  //   }
+  // });
+
   app.post("/api/rooms/roomdetails", async (req, res, next) => {
     const { senderId, roomId, roomPassword, isJoin, socketId } = req.body;
     try {
       const userSocket = socketMap.get(socketId);
+      console.log(userSocket.id, "- usrscoket");
 
       if (!userSocket) {
         return res.status(400).json({ msg: "Socket not found !" });
@@ -796,33 +1077,17 @@ module.exports = (io, app) => {
       }
 
       if (!amIMember) {
-        if (!room?.isPublic) {
-          payload = {
-            roomDetails: {
-              ...conversationPlain,
-              messages: [],
-              isMember: amIMember,
-            },
-          };
-        } else if (room?.isPublic && !("isJoin" in req.body)) {
-          payload = {
-            roomDetails: {
-              ...conversationPlain,
-              messages: messagesCopy,
-              isMember: amIMember,
-            },
-          };
-        }
-        if (isJoin == true) {
-          if (
-            !roomPassword ||
-            roomPassword != conversationPlain.room.password
-          ) {
-            return res
-              .status(400)
-              .json({ msg: `Matching password required !` });
-          } else {
-            userSocket.join(conversationPlain._id.toString());
+        if (room?.isPublic == true) {
+          if (!("isJoin" in req.body)) {
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: messagesCopy,
+                isMember: false,
+              },
+            };
+          } else if (isJoin == true) {
+            userSocket.join(conversation._id.toString());
             conversation.participants.push(user._id);
             room.members.push(user._id);
             await conversation.save();
@@ -834,15 +1099,52 @@ module.exports = (io, app) => {
                 isMember: true,
               },
             };
+          } else if (isJoin == false) {
+            return res.status(400).json({
+              msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+            });
           }
-        } else if (isJoin == false) {
-          return res.status(400).json({
-            msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
-          });
+        } else if (room?.isPublic == false) {
+          if (!("isJoin" in req.body)) {
+            payload = {
+              roomDetails: {
+                ...conversationPlain,
+                messages: [],
+                isMember: false,
+              },
+            };
+          } else if (isJoin == true) {
+            if (
+              !roomPassword ||
+              roomPassword != conversationPlain.room.password
+            ) {
+              return res
+                .status(400)
+                .json({ msg: `Matching password required !` });
+            } else {
+              userSocket.join(conversation._id.toString());
+              conversation.participants.push(user._id);
+              room.members.push(user._id);
+              await conversation.save();
+              await room.save();
+              payload = {
+                roomDetails: {
+                  ...conversationPlain,
+                  messages: messagesCopy,
+                  isMember: true,
+                },
+              };
+            }
+          } else if (isJoin == false) {
+            return res.status(400).json({
+              msg: `Invalid command. The command you attempted is not recognized or supported by the server.`,
+            });
+          }
         }
       } else {
-        if (!room.isPublic) {
+        if (room.isPublic == false) {
           if (!("isJoin" in req.body)) {
+            userSocket.join(conversation._id.toString());
             payload = {
               roomDetails: {
                 ...conversationPlain,
@@ -850,9 +1152,8 @@ module.exports = (io, app) => {
                 isMember: true,
               },
             };
-          }
-          if (isJoin == false) {
-            userSocket.leave(conversationPlain._id.toString());
+          } else if (isJoin == false) {
+            userSocket.leave(conversation._id.toString());
             room.members.pull(senderId);
             conversation.participants.pull(senderId);
             await room.save();
@@ -871,16 +1172,16 @@ module.exports = (io, app) => {
           }
         } else {
           if (!("isJoin" in req.body)) {
+            userSocket.join(conversation._id.toString());
             payload = {
               roomDetails: {
                 ...conversationPlain,
                 messages: messagesCopy,
-                isMember: amIMember,
+                isMember: true,
               },
             };
-          }
-          if (isJoin == false) {
-            userSocket.leave(conversationPlain._id.toString());
+          } else if (isJoin == false) {
+            userSocket.leave(conversation._id.toString());
             room.members.pull(senderId);
             conversation.participants.pull(senderId);
             await room.save();
@@ -899,13 +1200,14 @@ module.exports = (io, app) => {
           }
         }
       }
+      // console.log(userSocket.rooms, "- usersocket roomsssss");
 
       // if ("isJoin" in req.body && isJoin == true) {
-      //   io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
+      //   io.to(conversation._id.toString()).emit("room_chat_messages", {
       //     info: `${user.firstname ? user.firstname : user.username}'s joined`,
       //   });
       // } else if ("isJoin" in req.body && isJoin == false) {
-      //   io.to(conversationPlain._id.toString()).emit("room_chat_messages", {
+      //   io.to(conversation._id.toString()).emit("room_chat_messages", {
       //     info: `${user.firstname ? user.firstname : user.username}'s left`,
       //   });
       // }
