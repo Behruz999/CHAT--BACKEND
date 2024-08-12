@@ -1,12 +1,15 @@
 const { PORT, DB_URL } = process.env;
 const { connect } = require("mongoose");
 
-async function dbConnection(req, res, next) {
+async function dbConnection() {
   try {
     await connect(DB_URL);
     console.log(`DB's running...`);
   } catch (err) {
-    next(err);
+    console.error(err.message ? err.message : err);
+    throw new Error(
+      `Database connection failed: ${err.message ? err.message : err}`
+    );
   }
 }
 

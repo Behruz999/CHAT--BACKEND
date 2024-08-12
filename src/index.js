@@ -25,12 +25,22 @@ app.use(express.static("public"));
 
 app.use(express.json());
 
-dbConnection();
+portConnection(server);
+
+// Wrap dbConnection in an async IIFE to handle errors
+(async () => {
+  try {
+    await dbConnection();
+  } catch (err) {
+    // Pass the error to the global error handler
+    app.use((req, res, next) => {
+      next(err);
+    });
+  }
+})();
 
 sockets(io, app);
 
 app.use("/api", allRoutes);
 
 app.use(globalErrorHandler);
-
-portConnection(server);
