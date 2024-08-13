@@ -5,22 +5,22 @@ const paramsSchema = Joi.object({
 }).options({ allowUnknown: false });
 
 const loginSchema = Joi.object({
-  username: Joi.string().trim(true).required(),
-  password: Joi.string().trim(true),
+  username: Joi.string().trim().required(),
+  password: Joi.string().trim(),
 }).options({ allowUnknown: false });
 
 const editSchema = Joi.object({
-  firstname: Joi.string().trim(true),
-  username: Joi.string().trim(true),
-  img: Joi.string().trim(true),
-  bio: Joi.string().trim(true),
-  password: Joi.string().trim(true),
+  firstname: Joi.string().trim(),
+  username: Joi.string().trim(),
+  img: Joi.string().trim(),
+  bio: Joi.string().trim(),
+  password: Joi.string().trim(),
   contacts: Joi.array().items({
-    content: Joi.string().hex().length(24).trim(true).required(),
+    content: Joi.string().hex().length(24).trim().required(),
     status: Joi.number().valid(0, 1).required(),
   }),
   rooms: Joi.array().items({
-    content: Joi.string().hex().length(24).trim(true).required(),
+    content: Joi.string().hex().length(24).trim().required(),
     status: Joi.number().valid(0, 1).required(),
   }),
 }).options({ allowUnknown: false });
@@ -37,6 +37,7 @@ async function validateParams(req, res, next) {
 async function validateLogin(req, res, next) {
   try {
     await loginSchema.validateAsync(req.body);
+    console.log(req.body, '- body');
     next();
   } catch (err) {
     return res.status(400).json({ msg: err?.message ? err?.message : err });

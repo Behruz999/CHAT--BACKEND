@@ -3,6 +3,9 @@ const { saveFile, unlinkImageToUpdate } = require("../utils/upload");
 
 async function login(req, res, next) {
   try {
+    if (req.body.username) {
+      req.body.username = req.body.username.trim();
+    }
     let user = await UserModel.findOne({
       username: req.body.username,
     }).select("-updatedAt -createdAt");

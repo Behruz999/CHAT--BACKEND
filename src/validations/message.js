@@ -15,9 +15,9 @@ const querySchema = Joi.object({
 }).options({ allowUnknown: false });
 
 const bodySchema = Joi.object({
-  sender: Joi.string().hex().length(24).trim(true).required(),
-  receiver: Joi.string().hex().length(24).trim(true),
-  room: Joi.string().hex().length(24).trim(true),
+  sender: Joi.string().hex().length(24).trim().required(),
+  receiver: Joi.string().hex().length(24).trim(),
+  room: Joi.string().hex().length(24).trim(),
   content: Joi.string(),
   replyTo: Joi.string().hex().length(24),
 }).options({ allowUnknown: false });

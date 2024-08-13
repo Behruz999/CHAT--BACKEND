@@ -5,28 +5,28 @@ const paramsSchema = Joi.object({
 }).options({ allowUnknown: false });
 
 const bodySchema = Joi.object({
-  name: Joi.string().trim(true).required(),
-  desc: Joi.string().trim(true),
+  name: Joi.string().trim().required(),
+  desc: Joi.string().trim(),
   password: Joi.string()
-    .trim(true)
+    .trim()
     .when("isPublic", {
       is: false,
       then: Joi.required(),
       otherwise: Joi.optional()
     }),
-  creator: Joi.string().hex().length(24).trim(true).required(),
+  creator: Joi.string().hex().length(24).trim().required(),
   members: Joi.array().items(
-    Joi.string().hex().length(24).trim(true).required()
+    Joi.string().hex().length(24).trim().required()
   ),
   isPublic: Joi.boolean(),
 }).options({ allowUnknown: false });
 
 const editSchema = Joi.object({
-  name: Joi.string().trim(true),
-  desc: Joi.string().trim(true),
-  password: Joi.string().trim(true),
+  name: Joi.string().trim(),
+  desc: Joi.string().trim(),
+  password: Joi.string().trim(),
   members: Joi.array().items({
-    content: Joi.string().hex().length(24).trim(true).required(),
+    content: Joi.string().hex().length(24).trim().required(),
     status: Joi.number().required(),
   }),
   isPublic: Joi.boolean(),
