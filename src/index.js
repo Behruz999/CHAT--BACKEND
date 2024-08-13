@@ -14,8 +14,9 @@ const server = require("http").createServer(app);
 app.use(cors());
 const io = require("socket.io")(server, {
   cors: {
-    origin: [process.env.SOCKET_DOMAIN_DEV, process.env.SOCKET_DOMAIN_PRO],
-    methods: ["GET", "POST"]
+    origin: process.env.ALLOWED_ORIGINS?.split(",") || ["*"],
+    methods: ["GET", "POST"],
+    credentials: true, // Allow credentials like cookies
   },
   transports: ["websocket", "polling"], // Use WebSocket and HTTP long-polling
   allowEIO3: true, // Allow engine.io v3 clients to connect
