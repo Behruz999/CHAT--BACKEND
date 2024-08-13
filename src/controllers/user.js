@@ -33,6 +33,9 @@ async function login(req, res, next) {
 
     return res.status(200).json(response);
   } catch (err) {
+    if (err?.code == 11000) {
+      return res.status(400).json({ msg: `Try another username !` });
+    }
     next(err);
   }
 }

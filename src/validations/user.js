@@ -5,7 +5,7 @@ const paramsSchema = Joi.object({
 }).options({ allowUnknown: false });
 
 const loginSchema = Joi.object({
-  username: Joi.string().required(),
+  username: Joi.string().trim(true).required(),
   password: Joi.string().trim(true),
 }).options({ allowUnknown: false });
 

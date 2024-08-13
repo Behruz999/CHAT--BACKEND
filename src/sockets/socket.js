@@ -127,7 +127,7 @@ module.exports = (io, app) => {
     });
 
     socket.on("private_message", async (data, cb) => {
-      console.log("private_message event received:", data);
+      // console.log("private_message event received:", data);
       const { senderId, receiverId, message, replyToMessageId } = data;
 
       if (
@@ -210,7 +210,7 @@ module.exports = (io, app) => {
             date: newMessage.date.split(" ")[1],
           });
         }
-        console.log(socket.rooms, "- socket rooms on private_message");
+        // console.log(socket.rooms, "- socket rooms on private_message");
 
         // Optionally call the callback to acknowledge message reception
         // if (cb) cb({ success: true });
@@ -478,9 +478,18 @@ module.exports = (io, app) => {
     // });
 
     socket.on("room_chat_messages", async (data, cb) => {
-      console.log(data, "- data on room_chat_messages");
+      // console.log(data, "- data on room_chat_messages");
       const { senderId, roomId, message, replyToMessageId } = data;
       try {
+        if (
+          senderId.trim() === "" ||
+          !senderId ||
+          roomId.trim() === "" ||
+          !roomId
+        ) {
+          return cb({ error: "Sender or room identifiers required !" });
+        }
+
         if (message.trim() === "") {
           cb({ error: `Content required !` });
         }
@@ -748,6 +757,15 @@ module.exports = (io, app) => {
       let messages = [];
       let conversationId;
 
+      if (
+        senderId.trim() === "" ||
+        !senderId ||
+        receiverId.trim() === "" ||
+        !receiverId
+      ) {
+        return cb({ error: "Sender or receiver identifiers required !" });
+      }
+
       const userSocket = socketMap.get(socketId);
 
       if (!userSocket) {
@@ -789,17 +807,11 @@ module.exports = (io, app) => {
       // console.log(userSocket.id, "- userSockettttttttt before join");
       // console.log(userSocket.rooms, "- userSocket rooomsss before join");
       if (conversationId) {
-        console.log(typeof conversationId, "- ocnv");
-
         userSocket.join(conversationId);
-        console.log(
-          userSocket.rooms,
-          "- usersocket's rooms after joining !!!!!!!"
-        );
-        // console.log(`${userSocket.id} - Joined room: ${conversationId}`);
-      } else {
-        console.warn("No conversation ID found for joining");
       }
+      // else {
+      //   console.warn("No conversation ID found for joining");
+      // }
 
       // // Join the conversation room if an ID is found
       // if (conversationId) {
@@ -822,7 +834,6 @@ module.exports = (io, app) => {
       // } else {
       //   console.warn("No conversation ID found for joining");
       // }
-      console.log(userSocket.rooms, "- socket rooms on getchatmessages api");
       return res.status(200).json(annotatedMessages);
     } catch (err) {
       next(err);
@@ -1017,12 +1028,16 @@ module.exports = (io, app) => {
     const { senderId, roomId, roomPassword, isJoin, socketId } = req.body;
     try {
       const userSocket = socketMap.get(socketId);
-      console.log(userSocket.id, "- usrscoket");
 
       if (!userSocket) {
         return res.status(400).json({ msg: "Socket not found !" });
       }
-      if (!senderId || !roomId) {
+      if (
+        !senderId ||
+        senderId.trim() === "" ||
+        senderId.trim() === "" ||
+        !roomId
+      ) {
         return res
           .status(400)
           .json({ msg: `User and room identifiers required ! ` });
