@@ -45,6 +45,6 @@ portConnection(server);
 
 sockets(io, app);
 
-app.use("/api", allRoutes);
+app.use("/", allRoutes);
 
 app.use(globalErrorHandler);

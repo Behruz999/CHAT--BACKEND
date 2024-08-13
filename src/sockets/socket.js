@@ -742,7 +742,7 @@ module.exports = (io, app) => {
     });
   });
 
-  app.post("/api/messages/getchatmessages", async (req, res, next) => {
+  app.post("/messages/getchatmessages", async (req, res, next) => {
     const { senderId, receiverId, roomId, socketId } = req.body;
     try {
       let messages = [];
@@ -1013,7 +1013,7 @@ module.exports = (io, app) => {
   //   }
   // });
 
-  app.post("/api/rooms/roomdetails", async (req, res, next) => {
+  app.post("/rooms/roomdetails", async (req, res, next) => {
     const { senderId, roomId, roomPassword, isJoin, socketId } = req.body;
     try {
       const userSocket = socketMap.get(socketId);
