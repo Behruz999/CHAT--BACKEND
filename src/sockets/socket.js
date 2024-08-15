@@ -786,6 +786,22 @@ module.exports = (io, app) => {
       }
     });
 
+    socket.on("exit_chat", async (data, cb) => {
+      const { userId, convId } = data;
+      try {
+        const conversationId = typeof convId !== "string" && convId.toString();
+        socket.leave(conversationId);
+        await ConversationModel.updateOne(
+          {
+            _id: convId,
+          },
+          { $pull: { inChat: userId } }
+        );
+      } catch (err) {
+        cb && cb({ error: err?.message ? err.message : err });
+      }
+    });
+
     socket.on("disconnect", async () => {
       console.log("user disconnected:", socket.id);
       const updatedUser = await UserModel.findOneAndUpdate(
