@@ -75,7 +75,7 @@ module.exports = (io, app) => {
 
           delete conversation.participants;
         }
-
+console.log(conversations, '- conversationssssss');
         io.to(socket.id).emit("communicated_people", { conversations });
       } catch (err) {
         console.error(`Error handling communicated_chats:`, err);
