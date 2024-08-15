@@ -53,6 +53,11 @@ module.exports = (io, app) => {
             (p) => p._id != userId
           );
           const otherParticipant = otherParticipants[0];
+          const unreadMessagesCount = conversation?.messages?.reduce(
+            (acc, currentMessage) =>
+              currentMessage?.delivered == false ? (acc += 1) : (acc += 0),
+            0
+          );
 
           if (otherParticipant) {
             // Flatten participant fields into the main object
@@ -62,6 +67,7 @@ module.exports = (io, app) => {
             conversation.firstname = otherParticipant.firstname;
             conversation.username = otherParticipant.username;
             conversation.socketId = otherParticipant.socketId;
+            conversation.unreadCount = unreadMessagesCount;
           }
 
           delete conversation.participants;
@@ -147,9 +153,10 @@ module.exports = (io, app) => {
       try {
         // Find the user by ID
         const user = await UserModel.findById(senderId);
+        const receiver = await UserModel.findById(receiverId);
 
-        if (!user) {
-          return cb({ error: "User not found" });
+        if (!user || !receiver) {
+          return cb({ error: "Whether sender or receiver not found !" });
         }
 
         // Update user's socket ID
@@ -167,13 +174,26 @@ module.exports = (io, app) => {
           receiver: receiverId,
           content: message,
           replyTo: replyToMessageId ? replyToMessageId : null,
+          delivered: false,
           date: moment().format("YYYY-MM-DD HH:mm"),
         });
 
-        // Save the new message to the database
-        await newMessage.save();
-
         if (conversation) {
+          const amIInChat = conversation.inChat.some((u) => u == senderId);
+
+          if (!amIInChat) {
+            conversation.inChat.push(senderId);
+          }
+
+          const isOtherUserInChat = conversation.inChat.some(
+            (u) => u != senderId
+          );
+
+          if (isOtherUserInChat) {
+            newMessage.delivered = true;
+          }
+
+          await newMessage.save();
           // Add the new message to the conversation
           conversation.messages.push(newMessage._id);
           await conversation.save();
@@ -188,6 +208,7 @@ module.exports = (io, app) => {
           io.to(conversation._id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
+            convId: conversation._id,
           });
         } else {
           // Create a new conversation if one doesn't exist
@@ -196,7 +217,24 @@ module.exports = (io, app) => {
             messages: [newMessage._id],
             room: null,
           });
+
+          const amIInChat = conversation.inChat.some((u) => u == senderId);
+
+          if (!amIInChat) {
+            conversation.inChat.push(senderId);
+          }
+
           await conversation.save();
+
+          const isOtherUserInChat = conversation.inChat.some(
+            (u) => u != senderId
+          );
+
+          if (isOtherUserInChat) {
+            newMessage.delivered = true;
+          }
+
+          await newMessage.save();
 
           // Check if the socket is already in the room
           if (!socket.rooms.has(conversation._id.toString())) {
@@ -208,6 +246,7 @@ module.exports = (io, app) => {
           io.to(conversation._id.toString()).emit("private_message", {
             ...newMessage.toObject(),
             date: newMessage.date.split(" ")[1],
+            convId: conversation._id,
           });
         }
         // console.log(socket.rooms, "- socket rooms on private_message");
@@ -746,14 +785,35 @@ module.exports = (io, app) => {
 
     socket.on("disconnect", async () => {
       console.log("user disconnected:", socket.id);
-      await UserModel.updateOne({ socketId: socket.id }, { socketId: null });
+      const updatedUser = await UserModel.findOneAndUpdate(
+        { socketId: socket.id },
+        { socketId: null },
+        { new: true }
+      );
+
+      if (updatedUser) {
+        await ConversationModel.updateMany(
+          {
+            participants: { $in: [updatedUser._id] },
+          },
+          { $pull: { inChat: updatedUser._id } }
+        );
+      }
       socketMap.delete(socket.id);
     });
   });
 
   app.post("/messages/getchatmessages", async (req, res, next) => {
     const { senderId, receiverId, roomId, socketId } = req.body;
+    // let page = 2;
+    // let limit = 50;
     try {
+      const userSocket = socketMap.get(socketId);
+
+      if (!userSocket) {
+        return res.status(400).json({ msg: "Socket not found!" });
+      }
+
       let messages = [];
       let conversationId;
 
@@ -764,12 +824,6 @@ module.exports = (io, app) => {
         !receiverId
       ) {
         return cb({ error: "Sender or receiver identifiers required !" });
-      }
-
-      const userSocket = socketMap.get(socketId);
-
-      if (!userSocket) {
-        return res.status(400).json({ msg: "Socket not found!" });
       }
 
       if (roomId) {
@@ -784,57 +838,134 @@ module.exports = (io, app) => {
 
         messages = conversation.messages;
         conversationId = conversation._id.toString();
+
+        if (
+          conversationId &&
+          !userSocket.rooms.has(conversationId.toString())
+        ) {
+          userSocket.join(conversationId.toString());
+          // userSocket.join(conversationId);
+        }
       } else if (senderId && receiverId) {
         // one-to-one conversation logic
+        const receiver = await UserModel.findById(receiverId);
+
+        if (!receiver) {
+          return res.status(400).json({ msg: "Receiver not found!" });
+        }
+
         const conversation = await ConversationModel.findOne({
           participants: { $all: [senderId, receiverId] },
           room: null,
-        }).populate("messages");
+        })
+          .populate("messages")
+          .lean();
 
         if (!conversation) {
           return res.status(200).json([]);
         }
 
+        await ConversationModel.updateMany(
+          {
+            _id: { $ne: conversation._id },
+            participants: { $in: [senderId] },
+          },
+          { $pull: { inChat: senderId } }
+        );
+
+        const amIInChat = conversation.inChat.some((u) => u == senderId);
+
+        if (!amIInChat) {
+          await ConversationModel.updateOne(
+            {
+              participants: { $all: [senderId, receiverId] },
+              room: null,
+            },
+            { $push: { inChat: senderId } }
+          );
+        }
+
+        const existUnreadMessages = conversation.messages.filter(
+          (m) => m?.delivered == false && m?.receiver == senderId
+        );
+
         messages = conversation.messages;
         conversationId = conversation._id.toString();
-      }
 
+        if (
+          Array.isArray(existUnreadMessages) &&
+          existUnreadMessages.length !== 0
+        ) {
+          const unreadMessageIds = existUnreadMessages.map((m) => m?._id);
+
+          await MessageModel.updateMany(
+            {
+              _id: { $in: unreadMessageIds },
+            },
+            { delivered: true }
+          );
+          io.to(receiver.socketId.toString()).emit("track_deliver_status", {
+            isDelivered: true,
+            convId: conversationId.toString(),
+          });
+        }
+
+        // console.log(userSocket.rooms, "- userSocket rooomsss before join");
+
+        // if (
+        //   conversationId &&
+        //   !userSocket.rooms.has(conversationId.toString())
+        // ) {
+        //   userSocket.join(conversationId.toString());
+        //   }
+
+        const currentRooms = Array.from(userSocket.rooms);
+
+        for (const room of currentRooms) {
+          if (room != userSocket.id) {
+            userSocket.leave(room)
+          }
+        }
+        
+        userSocket.join(conversationId.toString());
+      }
+console.log(userSocket.rooms, '- user socket roomssss');
       const annotatedMessages = messages.map((message) => ({
-        ...message.toObject(),
+        ...message,
         date: message.date.split(" ")[1],
       }));
 
-      // console.log(userSocket.id, "- userSockettttttttt before join");
-      // console.log(userSocket.rooms, "- userSocket rooomsss before join");
-      if (conversationId) {
-        userSocket.join(conversationId);
-      }
-      // else {
-      //   console.warn("No conversation ID found for joining");
-      // }
+      // Paginate the messages
+      // const startIndex = (page - 1) * limit;
+      // const endIndex = page * limit;
+      // const paginatedMessages = annotatedMessages.slice(startIndex, endIndex);
+      // const response = {
+      //   page,
+      //   limit,
+      //   totalMessages: annotatedMessages.length,
+      //   messages: paginatedMessages,
+      // };
 
-      // // Join the conversation room if an ID is found
-      // if (conversationId) {
-      //   const userId = socketMap.get(socketId);
-      //   if (userId) {
-      //     // Find the user's socket based on their ID
-      //     const userSocket = Array.from(io.sockets.sockets.values()).find(
-      //       (s) => socketMap.get(s.id) === userId
-      //     );
-
-      //     if (userSocket) {
-      //       userSocket.join(conversationId);
-      //       console.log(`${userSocket.id} joined room: ${conversationId}`);
-      //     } else {
-      //       console.warn("User socket not found");
-      //     }
-      //   } else {
-      //     console.warn("No user ID found for socket");
-      //   }
+      // for Infinite Scrolling with Backward Pagination like a telegram
+      // Fetch messages based on anchorMessageId
+      // if (anchorMessageId) {
+      //   messages = await MessageModel.find({
+      //     conversation: conversationId,
+      //     _id: { $lt: anchorMessageId }, // Messages older than the anchor
+      //   })
+      //     .sort({ _id: -1 }) // Sort by descending order of _id (newest first)
+      //     .limit(limit)
+      //     .lean();
       // } else {
-      //   console.warn("No conversation ID found for joining");
+      //   // Initial load, fetch the most recent messages
+      //   messages = await MessageModel.find({ conversation: conversationId })
+      //     .sort({ _id: -1 })
+      //     .limit(limit)
+      //     .lean();
       // }
+
       return res.status(200).json(annotatedMessages);
+      // return res.status(200).json(annotatedMessages);
     } catch (err) {
       next(err);
     }
@@ -1102,6 +1233,13 @@ module.exports = (io, app) => {
               },
             };
           } else if (isJoin == true) {
+            const currentRooms = Array.from(userSocket.rooms);
+
+            for (const room of currentRooms) {
+              if (room != userSocket.id) {
+                userSocket.leave(room)
+              }
+            }
             userSocket.join(conversation._id.toString());
             conversation.participants.push(user._id);
             room.members.push(user._id);
@@ -1137,6 +1275,13 @@ module.exports = (io, app) => {
                 .status(400)
                 .json({ msg: `Matching password required !` });
             } else {
+              const currentRooms = Array.from(userSocket.rooms);
+
+              for (const room of currentRooms) {
+                if (room != userSocket.id) {
+                  userSocket.leave(room)
+                }
+              }
               userSocket.join(conversation._id.toString());
               conversation.participants.push(user._id);
               room.members.push(user._id);
@@ -1159,6 +1304,13 @@ module.exports = (io, app) => {
       } else {
         if (room.isPublic == false) {
           if (!("isJoin" in req.body)) {
+            const currentRooms = Array.from(userSocket.rooms);
+
+            for (const room of currentRooms) {
+              if (room != userSocket.id) {
+                userSocket.leave(room)
+              }
+            }
             userSocket.join(conversation._id.toString());
             payload = {
               roomDetails: {
@@ -1187,6 +1339,13 @@ module.exports = (io, app) => {
           }
         } else {
           if (!("isJoin" in req.body)) {
+            const currentRooms = Array.from(userSocket.rooms);
+
+            for (const room of currentRooms) {
+              if (room != userSocket.id) {
+                userSocket.leave(room)
+              }
+            }
             userSocket.join(conversation._id.toString());
             payload = {
               roomDetails: {

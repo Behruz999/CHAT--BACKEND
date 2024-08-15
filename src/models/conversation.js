@@ -16,6 +16,15 @@ const conversationSchema = new Schema(
       ref: "room",
       default: null,
     },
+    inChat: {
+      type: [
+        {
+          type: Schema.Types.ObjectId,
+          ref: "user",
+        },
+      ],
+      default: [],
+    },
     messages: {
       type: [
         {

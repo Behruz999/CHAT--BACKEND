@@ -1,4 +1,8 @@
 require("dotenv").config();
+const isProduction = process.env.NODE_ENV === "production";
+// const moment = require('moment-timezone');
+// Set the default timezone to Tashkent, Uzbekistan
+// moment.tz.setDefault('Asia/Tashkent');
 const express = require("express");
 const app = express();
 const cors = require("cors");
@@ -14,7 +18,7 @@ const server = require("http").createServer(app);
 app.use(cors());
 const io = require("socket.io")(server, {
   cors: {
-    origin: process.env.ALLOWED_ORIGINS?.split(",") || ["*"],
+    origin: isProduction ? process.env.ALLOWED_ORIGINS?.split(",") : "*",
     methods: ["GET", "POST"],
     credentials: true, // Allow credentials like cookies
   },

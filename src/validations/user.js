@@ -37,7 +37,6 @@ async function validateParams(req, res, next) {
 async function validateLogin(req, res, next) {
   try {
     await loginSchema.validateAsync(req.body);
-    console.log(req.body, '- body');
     next();
   } catch (err) {
     return res.status(400).json({ msg: err?.message ? err?.message : err });
