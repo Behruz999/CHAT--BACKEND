@@ -55,7 +55,10 @@ module.exports = (io, app) => {
           const otherParticipant = otherParticipants[0];
           const unreadMessagesCount = conversation?.messages?.reduce(
             (acc, currentMessage) =>
-              currentMessage?.delivered == false ? (acc += 1) : (acc += 0),
+              currentMessage?.delivered == false &&
+              currentMessage.receiver == userId
+                ? (acc += 1)
+                : (acc += 0),
             0
           );
 
@@ -923,13 +926,13 @@ module.exports = (io, app) => {
 
         for (const room of currentRooms) {
           if (room != userSocket.id) {
-            userSocket.leave(room)
+            userSocket.leave(room);
           }
         }
-        
+
         userSocket.join(conversationId.toString());
       }
-console.log(userSocket.rooms, '- user socket roomssss');
+
       const annotatedMessages = messages.map((message) => ({
         ...message,
         date: message.date.split(" ")[1],
@@ -1237,7 +1240,7 @@ console.log(userSocket.rooms, '- user socket roomssss');
 
             for (const room of currentRooms) {
               if (room != userSocket.id) {
-                userSocket.leave(room)
+                userSocket.leave(room);
               }
             }
             userSocket.join(conversation._id.toString());
@@ -1279,7 +1282,7 @@ console.log(userSocket.rooms, '- user socket roomssss');
 
               for (const room of currentRooms) {
                 if (room != userSocket.id) {
-                  userSocket.leave(room)
+                  userSocket.leave(room);
                 }
               }
               userSocket.join(conversation._id.toString());
@@ -1308,7 +1311,7 @@ console.log(userSocket.rooms, '- user socket roomssss');
 
             for (const room of currentRooms) {
               if (room != userSocket.id) {
-                userSocket.leave(room)
+                userSocket.leave(room);
               }
             }
             userSocket.join(conversation._id.toString());
@@ -1343,7 +1346,7 @@ console.log(userSocket.rooms, '- user socket roomssss');
 
             for (const room of currentRooms) {
               if (room != userSocket.id) {
-                userSocket.leave(room)
+                userSocket.leave(room);
               }
             }
             userSocket.join(conversation._id.toString());
